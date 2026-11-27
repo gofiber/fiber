@@ -945,12 +945,12 @@ func Test_Cache_HandlerErrorKeepsTheEntry(t *testing.T) {
 				return c.SendString("PUBLIC")
 			})
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 			for _, reload := range []string{"no-cache", "max-age=0"} {
-				got := getRoot(t, app, map[string]string{"X-Fail": "1", fiber.HeaderCacheControl: reload})
+				got := cacheTestCGet(t, app, "/", "X-Fail", "1", fiber.HeaderCacheControl, reload)
 				require.Equal(t, fiber.StatusServiceUnavailable, got.status)
 			}
-			cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "PUBLIC")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "PUBLIC")
 		})
 	}
 }
@@ -1042,38 +1042,38 @@ func Test_Cache_RefusalEndsTheSharedEntryOnlyForACredential(t *testing.T) {
 	t.Parallel()
 	custom := Config{KeyGenerator: pathKey}
 	tests := []struct {
-		blocked   map[string]string // what the client the app refuses sends besides X-Blocked
+		blocked   []string // what the client the app refuses sends besides X-Blocked, as name and value pairs
 		name      string
 		directive string // the Cache-Control the refusal carries, if any
 		cfg       Config
 		kept      bool
 	}{
 		{name: "default key", kept: true},
-		{name: "default key, a cookie the key does not hold", blocked: map[string]string{"Cookie": "sid=1"}, kept: true},
-		{name: "default key, a credential header the key does not hold", blocked: map[string]string{"X-API-Key": "k"}, kept: true},
+		{name: "default key, a cookie the key does not hold", blocked: []string{"Cookie", "sid=1"}, kept: true},
+		{name: "default key, a credential header the key does not hold", blocked: []string{"X-API-Key", "k"}, kept: true},
 		{name: "KeyHeaders naming a tenant", cfg: Config{KeyHeaders: []string{"X-Tenant"}}, kept: true},
 		{name: "KeyCookies the request does not carry", cfg: Config{KeyCookies: []string{"session"}}, kept: true},
-		{name: "custom KeyGenerator, client with an undeclared cookie", cfg: custom, blocked: map[string]string{"Cookie": "sid=1"}, kept: true},
+		{name: "custom KeyGenerator, client with an undeclared cookie", cfg: custom, blocked: []string{"Cookie", "sid=1"}, kept: true},
 		{name: "custom KeyGenerator, anonymous client", cfg: custom, kept: true},
 		{
 			name: "custom KeyGenerator, client with a header that is no credential",
-			cfg:  custom, blocked: map[string]string{"X-Tenant": "acme"}, kept: true,
+			cfg:  custom, blocked: []string{"X-Tenant", "acme"}, kept: true,
 		},
 		{
 			name:    "custom KeyGenerator, client with a declared cookie",
 			cfg:     Config{KeyGenerator: pathKey, KeyCredentialHeaders: []string{"Cookie"}},
-			blocked: map[string]string{"Cookie": "sid=1"},
+			blocked: []string{"Cookie", "sid=1"},
 		},
 		{
 			name:    "custom KeyGenerator, client with a declared header",
 			cfg:     Config{KeyGenerator: pathKey, KeyCredentialHeaders: []string{"X-Company-Token"}},
-			blocked: map[string]string{"X-Company-Token": "t"},
+			blocked: []string{"X-Company-Token", "t"},
 		},
-		{name: "custom KeyGenerator, client with a built-in credential header it does not declare", cfg: custom, blocked: map[string]string{"X-API-Key": "junk"}, kept: true},
+		{name: "custom KeyGenerator, client with a built-in credential header it does not declare", cfg: custom, blocked: []string{"X-API-Key", "junk"}, kept: true},
 		{
 			name:    "custom KeyGenerator, client with a built-in credential header it declares",
 			cfg:     Config{KeyGenerator: pathKey, KeyCredentialHeaders: []string{"X-API-Key"}},
-			blocked: map[string]string{"X-API-Key": "k"},
+			blocked: []string{"X-API-Key", "k"},
 		},
 		// What the refusal says about keeping its own response is no verdict on the entry others share.
 		{name: "default key, anonymous client, refusal says no-store", directive: "no-store", kept: true},
@@ -1083,7 +1083,7 @@ func Test_Cache_RefusalEndsTheSharedEntryOnlyForACredential(t *testing.T) {
 		{
 			name:      "custom KeyGenerator, client with a built-in credential header, refusal says no-store",
 			cfg:       custom,
-			blocked:   map[string]string{"X-API-Key": "junk"},
+			blocked:   []string{"X-API-Key", "junk"},
 			directive: "no-store",
 			kept:      true,
 		},
@@ -1113,18 +1113,17 @@ func Test_Cache_RefusalEndsTheSharedEntryOnlyForACredential(t *testing.T) {
 								return c.SendStatus(status)
 							})
 
-							require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
-							require.Equal(t, cacheHit, getRoot(t, app, nil).cache)
+							require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
+							require.Equal(t, cacheHit, cacheTestCGet(t, app, "/").cache)
 
-							headers := map[string]string{"X-Blocked": "1", fiber.HeaderCacheControl: reload}
-							maps.Copy(headers, tc.blocked)
-							require.Equal(t, status, getRoot(t, app, headers).status)
+							headers := append([]string{"X-Blocked", "1", fiber.HeaderCacheControl, reload}, tc.blocked...)
+							require.Equal(t, status, cacheTestCGet(t, app, "/", headers...).status)
 
 							want := cacheMiss
 							if tc.kept {
 								want = cacheHit
 							}
-							require.Equal(t, want, getRoot(t, app, nil).cache)
+							require.Equal(t, want, cacheTestCGet(t, app, "/").cache)
 						})
 					}
 				}
@@ -1192,6 +1191,57 @@ func Test_Cache_RefusalOfGetOrHeadReachesTheOther(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func Test_Cache_RefusalReachesEverySpellingAndBodyOfTheURL(t *testing.T) {
+	t.Parallel()
+	type request struct{ target, body string }
+	for _, tc := range []struct {
+		name           string
+		refused, other request
+	}{
+		{name: "escaped path", refused: request{target: "/page"}, other: request{target: "/%70age"}},
+		{name: "dot segments", refused: request{target: "/a/../page"}, other: request{target: "/page"}},
+		{name: "empty query", refused: request{target: "/page"}, other: request{target: "/page?"}},
+		{name: "fragment", refused: request{target: "/page#top"}, other: request{target: "/page"}},
+		{name: "absolute form", refused: request{target: "/page"}, other: request{target: "http://example.com/page"}},
+		{name: "another body", refused: request{target: "/page", body: "a"}, other: request{target: "/page", body: "b"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var ended atomic.Bool
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Hour, KeyCredentialHeaders: []string{"X-Token"}}))
+			app.Get("/page", func(c fiber.Ctx) error {
+				if ended.Load() {
+					return c.SendStatus(fiber.StatusUnauthorized)
+				}
+				return c.SendString("secret for " + c.Get("X-Token"))
+			})
+			w := cacheTestCWire{t: t, app: app}
+			send := func(r request, cacheControl string) reply {
+				req := fasthttp.AcquireRequest()
+				defer fasthttp.ReleaseRequest(req)
+				req.Header.SetHost("example.com")
+				req.SetRequestURI(r.target)
+				req.Header.Set("X-Token", "t1")
+				if cacheControl != "" {
+					req.Header.Set(fiber.HeaderCacheControl, cacheControl)
+				}
+				if r.body != "" {
+					req.SetBodyString(r.body)
+				}
+				return w.serve(req)
+			}
+
+			require.Equal(t, cacheMiss, send(tc.refused, "").cache)
+			require.Equal(t, cacheMiss, send(tc.other, "").cache, "the two keep entries of their own")
+			ended.Store(true)
+			require.Equal(t, fiber.StatusUnauthorized, send(tc.refused, "max-age=0").status)
+			got := send(tc.other, "")
+			require.Equal(t, fiber.StatusUnauthorized, got.status, "the refused credential was served %q from the cache", got.body)
+		})
 	}
 }
 
@@ -1287,7 +1337,7 @@ func Test_Cache_ExpiredDeleteKeepsAConcurrentReplacement(t *testing.T) {
 				return c.SendString("fresh")
 			})
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 			clock.Add(2 * time.Minute)
 
 			// The slow request finds the expired entry and waits in the invalidator.
@@ -1306,11 +1356,11 @@ func Test_Cache_ExpiredDeleteKeepsAConcurrentReplacement(t *testing.T) {
 			<-entered
 
 			// Another request replaces the entry it found expired, then the slow one resumes.
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 			close(gate)
 			<-inHandler
 
-			require.Equal(t, cacheHit, getRoot(t, app, nil).cache, "the delete of the expired entry took the replacement with it")
+			require.Equal(t, cacheHit, cacheTestCGet(t, app, "/").cache, "the delete of the expired entry took the replacement with it")
 			close(release)
 			res := <-done
 			require.NoError(t, res.err)
@@ -1338,10 +1388,10 @@ func Test_Cache_InvalidatorRunsBeforeFreshnessIsJudged(t *testing.T) {
 				},
 			}), "response-")
 
-			require.Equal(t, "response-1", getRoot(t, app, nil).body)
+			require.Equal(t, "response-1", cacheTestCGet(t, app, "/").body)
 			clock.Add(30 * time.Second)
 
-			got := getRoot(t, app, map[string]string{"X-Slow": "1", fiber.HeaderCacheControl: "max-age=60"})
+			got := cacheTestCGet(t, app, "/", "X-Slow", "1", fiber.HeaderCacheControl, "max-age=60")
 			require.Equal(t, "response-2", got.body, "an entry the call aged past max-age was served")
 		})
 	}
@@ -1477,10 +1527,11 @@ func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 		t.Run(fmt.Sprintf("invalidator=%t", withInvalidator), func(t *testing.T) {
 			t.Parallel()
 			var reads atomic.Int32
-			storage := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) {
+			storage := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) error {
 				if strings.HasPrefix(key, cacheKeyVersion+"|GET|") && !strings.HasPrefix(key, bodyKeyPrefix) {
 					reads.Add(1)
 				}
+				return nil
 			}}
 			clock := cacheTestCClock()
 			cfg := Config{Storage: storage, Expiration: time.Minute, clock: clock.Now, DisableVaryHeaders: true}
@@ -1489,19 +1540,19 @@ func Test_Cache_ExpiredDeleteChecksTheEntry(t *testing.T) {
 			}
 			app, _ := cacheTestAOrigin(New(cfg), "")
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 			clock.Add(2 * time.Minute)
 
 			reads.Store(0)
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 			require.Equal(t, int32(2), reads.Load(), "the lookup, and the check that the entry is the one found")
 		})
 	}
 }
 
 // An entry that cannot be served is deleted before the request goes on. A Storage that fails that delete,
-// or the read that checks it, fails the request rather than leave the entry to be found again.
-func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) {
+// or the read that checks it, leaves it to be found unservable again, and the handler answers each request.
+func Test_Cache_UnservableEntryThatCannotBeDeletedIsNotServed(t *testing.T) {
 	t.Parallel()
 	const key = cacheKeyVersion + "|GET|scheme=http|host=example.com|/|q=|h=accept:0|accept-encoding:0|accept-language:0"
 	future := uint64(time.Now().Unix()) + 3600
@@ -1509,13 +1560,20 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 	for _, tc := range []struct {
 		entry       *item
 		name        string
-		want        string
+		want        string // X-Cache of the request that finds the entry
+		again       string // and of the one after it
 		invalidator bool
 	}{
-		{name: "expired, held past its lifetime", entry: &item{exp: 1, ttl: 1}, want: "failed to delete expired key"},
-		{name: "private", entry: &item{exp: future, private: true}, want: "failed to delete private response"},
-		{name: "expired, and the read that checks it fails", entry: &item{exp: 1, ttl: 1}, invalidator: true, want: "failed to delete expired key"},
-		{name: "private, and the read that checks it fails", entry: &item{exp: future, private: true}, invalidator: true, want: "failed to delete private response"},
+		{name: "expired, held past its lifetime", entry: &item{exp: 1, ttl: 1}, want: cacheMiss, again: cacheHit},
+		{name: "private", entry: &item{exp: future, private: true}, want: cacheUnreachable, again: cacheUnreachable},
+		{
+			name: "expired, and the read that checks it fails", entry: &item{exp: 1, ttl: 1}, invalidator: true,
+			want: cacheMiss, again: cacheUnreachable,
+		},
+		{
+			name: "private, and the read that checks it fails", entry: &item{exp: future, private: true}, invalidator: true,
+			want: cacheUnreachable, again: cacheUnreachable,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -1523,15 +1581,17 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 			raw, err := tc.entry.MarshalMsg(nil)
 			require.NoError(t, err)
 			base.Data[key] = raw
+			base.Data[bodyKey(key)] = []byte("stored")
 
 			cfg := Config{Storage: base, Expiration: time.Hour}
 			if tc.invalidator {
 				// The entry is read to find it, and again to check that it is still the one found.
 				var reads atomic.Int32
-				cfg.Storage = &hookedStorage{Memory: base, onGet: func(read string) {
+				cfg.Storage = &hookedStorage{Memory: base, onGet: func(read string) error {
 					if read == key && reads.Add(1) == 2 {
 						base.SetErr(storagetest.OpGet, key, errors.New("storage unavailable"))
 					}
+					return nil
 				}}
 				cfg.CacheInvalidator = func(fiber.Ctx) bool { return false }
 			} else {
@@ -1543,8 +1603,13 @@ func Test_Cache_UnservableEntryThatCannotBeDeletedFailsTheRequest(t *testing.T) 
 			app.Use(New(cfg))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-			require.Equal(t, fiber.StatusInternalServerError, getRoot(t, app, nil).status)
-			require.ErrorContains(t, failures.err, tc.want)
+			for _, want := range []string{tc.want, tc.again} {
+				got := cacheTestCGet(t, app, "/")
+				require.Equal(t, fiber.StatusOK, got.status)
+				require.Equal(t, want, got.cache)
+				require.Equal(t, "ok", got.body, "the handler's answer, never the entry's")
+			}
+			require.NoError(t, failures.err)
 		})
 	}
 }
@@ -1561,11 +1626,12 @@ func Test_Cache_RefusalToleratesAStorageThatFailsWhileDroppingTheReplacement(t *
 			var armed atomic.Bool
 			var watched atomic.Pointer[string]
 			var reads atomic.Int32
-			storage := &hookedStorage{Memory: base, onGet: func(key string) {
+			storage := &hookedStorage{Memory: base, onGet: func(key string) error {
 				// The first read of the key after the replacement is stored finds it, and the next removes it.
 				if w := watched.Load(); w != nil && key == *w && reads.Add(1) == 2 && failing == "read" {
 					base.SetErr(storagetest.OpGet, key, failure)
 				}
+				return nil
 			}}
 			entryOf := func(session string) string {
 				base.Mu.RLock()
@@ -1830,15 +1896,11 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryRuledOut(t *testing.T) {
 					},
 				}), "")
 
-				require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+				require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 				require.Zero(t, asked.Load(), "a miss has no entry to ask about")
 				clock.Add(tc.age)
 
-				headers := map[string]string{}
-				if tc.cacheControl != "" {
-					headers[fiber.HeaderCacheControl] = tc.cacheControl
-				}
-				getRoot(t, app, headers)
+				cacheTestCGet(t, app, "/", fiber.HeaderCacheControl, tc.cacheControl)
 				want := int32(0)
 				if tc.asked {
 					want = 1
@@ -1865,38 +1927,44 @@ func Test_Cache_InvalidatorIsNotAskedAboutAnEntryThatHasExpired(t *testing.T) {
 				},
 			}), "")
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache, "the entry was found expired")
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache, "the entry was found expired")
 			require.Zero(t, asked.Load())
 		})
 	}
 }
 
-// hookedStorage runs onGet, onSet and onDelete before it reads, writes and deletes a key, when set.
+// hookedStorage runs onGet, onSet and onDelete before it reads, writes and deletes a key; a hook's error is the operation's.
 type hookedStorage struct {
 	*storagetest.Memory
-	onGet    func(key string)
-	onSet    func(key string, exp time.Duration)
-	onDelete func(key string)
+	onGet    func(key string) error
+	onSet    func(key string, exp time.Duration) error
+	onDelete func(key string) error
 }
 
 func (s *hookedStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
 	if s.onSet != nil {
-		s.onSet(key, exp)
+		if err := s.onSet(key, exp); err != nil {
+			return err
+		}
 	}
 	return s.Memory.SetWithContext(ctx, key, val, exp)
 }
 
 func (s *hookedStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
 	if s.onGet != nil {
-		s.onGet(key)
+		if err := s.onGet(key); err != nil {
+			return nil, err
+		}
 	}
 	return s.Memory.GetWithContext(ctx, key)
 }
 
 func (s *hookedStorage) DeleteWithContext(ctx context.Context, key string) error {
 	if s.onDelete != nil {
-		s.onDelete(key)
+		if err := s.onDelete(key); err != nil {
+			return err
+		}
 	}
 	return s.Memory.DeleteWithContext(ctx, key)
 }

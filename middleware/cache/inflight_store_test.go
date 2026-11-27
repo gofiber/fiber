@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -17,26 +19,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// interleavedSetStorage runs duringFirstSet once, after the cache decided to
-// write and before the write reaches the backend.
-type interleavedSetStorage struct {
-	*storagetest.Memory
-	duringFirstSet func()
-	entered        atomic.Bool
-}
+// cacheTestIGet sends GET target with the header pairs and reports its status and X-Cache.
+type cacheTestIGet func(target string, headers ...string) (int, string, error)
 
-func (s *interleavedSetStorage) SetWithContext(ctx context.Context, key string, value []byte, exp time.Duration) error {
-	if s.entered.CompareAndSwap(false, true) {
-		s.duringFirstSet()
+// cacheTestIStoreRace serves GET /* (100 bytes, room for one) over storage, running during at its first write.
+func cacheTestIStoreRace(storage *storagetest.Memory, probe *accountingProbe, during func(get cacheTestIGet)) cacheTestIGet {
+	app := fiber.New()
+	get := func(target string, headers ...string) (int, string, error) {
+		resp, err := app.Test(cacheTestCReq(target, headers...))
+		if err != nil {
+			return 0, "", err
+		}
+		return resp.StatusCode, resp.Header.Get("X-Cache"), resp.Body.Close()
 	}
-	return s.Memory.SetWithContext(ctx, key, value, exp)
+	var entered atomic.Bool
+	hooked := &hookedStorage{Memory: storage, onSet: func(string, time.Duration) error {
+		if entered.CompareAndSwap(false, true) {
+			during(get)
+		}
+		return nil
+	}}
+	app.Use(New(Config{Expiration: time.Hour, MaxBytes: charged(defaultKey("/second"), 100, textPlain), Storage: hooked, accounting: probe.record}))
+	app.Get("/*", func(c fiber.Ctx) error { return c.Send(make([]byte, 100)) })
+	return get
 }
 
-func (s *interleavedSetStorage) bodiesOfSize(size int) int {
-	s.Mu.RLock()
-	defer s.Mu.RUnlock()
+func bodiesOfSize(storage *storagetest.Memory, size int) int {
+	storage.Mu.RLock()
+	defer storage.Mu.RUnlock()
 	held := 0
-	for _, value := range s.Data {
+	for _, value := range storage.Data {
 		if len(value) == bodyStampLen+size {
 			held++
 		}
@@ -49,101 +61,113 @@ func (s *interleavedSetStorage) bodiesOfSize(size int) int {
 // afterwards must not stay behind untracked.
 func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsNotKept(t *testing.T) {
 	t.Parallel()
-	storage := &interleavedSetStorage{Memory: storagetest.New()}
-	probe := &accountingProbe{}
-
-	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: time.Hour,
-		MaxBytes:   charged(defaultKey("/second"), 100, textPlain), // one entry
-		Storage:    storage,
-		accounting: probe.record,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.Send(make([]byte, 100)) })
-
-	// Returns its error instead of asserting: the storage hook calls it from the
-	// goroutine that serves the first request.
-	get := func(target, cacheControl string) (int, error) {
-		req := httptest.NewRequest(fiber.MethodGet, target, http.NoBody)
-		if cacheControl != "" {
-			req.Header.Set(fiber.HeaderCacheControl, cacheControl)
-		}
-		resp, err := app.Test(req)
-		if err != nil {
-			return 0, err
-		}
-		return resp.StatusCode, resp.Body.Close()
-	}
-
+	storage, probe := storagetest.New(), &accountingProbe{}
 	var (
 		secondStatus int
 		errSecond    error
 	)
-	storage.duringFirstSet = func() { secondStatus, errSecond = get("/second", "") }
-	status, err := get("/first", "")
+	get := cacheTestIStoreRace(storage, probe, func(get cacheTestIGet) { secondStatus, _, errSecond = get("/second") })
+	status, cache, err := get("/first")
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, status)
+	require.Equal(t, cacheUnreachable, cache, "the entry it stored was taken back out")
 	require.NoError(t, errSecond)
 	require.Equal(t, fiber.StatusOK, secondStatus)
 
-	status, err = get("/second", "only-if-cached")
+	status, _, err = get("/second", fiber.HeaderCacheControl, "only-if-cached")
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, status)
-	status, err = get("/first", "only-if-cached")
+	status, _, err = get("/first", fiber.HeaderCacheControl, "only-if-cached")
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusGatewayTimeout, status)
 	require.Equal(t, 1, probe.nodes())
 	require.Equal(t, charged(defaultKey("/second"), 100, textPlain), probe.counted())
-	require.Equal(t, 1, storage.bodiesOfSize(100))
+	require.Equal(t, 1, bodiesOfSize(storage, 100))
 }
 
 // When the entry cannot be taken back out, it has to be tracked again so that a
 // later eviction reaches it.
 func Test_Cache_MaxBytes_EntryEvictedWhileStoredIsTrackedWhenDeleteFails(t *testing.T) {
 	t.Parallel()
-	storage := &interleavedSetStorage{Memory: storagetest.New()}
-	probe := &accountingProbe{}
+	for _, failing := range [][]string{{storagetest.OpDelete}, {storagetest.OpDelete, storagetest.OpGet}} {
+		t.Run(strings.Join(failing, " and ")+" fail", func(t *testing.T) {
+			t.Parallel()
+			storage, probe := storagetest.New(), &accountingProbe{}
+			var (
+				secondStatus int
+				errSecond    error
+			)
+			get := cacheTestIStoreRace(storage, probe, func(get cacheTestIGet) {
+				secondStatus, _, errSecond = get("/second")
+				for _, op := range failing {
+					storage.SetErr(op, "*", errors.New("storage unavailable"))
+				}
+			})
+			status, cache, err := get("/first")
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, status)
+			require.Equal(t, cacheMiss, cache, "the entry could not be taken back out, so it stays stored")
+			require.NoError(t, errSecond)
+			require.Equal(t, fiber.StatusOK, secondStatus)
+			require.Equal(t, 2, probe.nodes())
+			require.Equal(t, charged(defaultKey("/first"), 100, textPlain)+charged(defaultKey("/second"), 100, textPlain), probe.counted())
 
+			storage.ClearErrs()
+			status, _, err = get("/third")
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, status)
+			require.Equal(t, 1, probe.nodes())
+			require.Equal(t, charged(defaultKey("/third"), 100, textPlain), probe.counted())
+			require.Equal(t, 1, bodiesOfSize(storage, 100))
+		})
+	}
+}
+
+func Test_Cache_MaxBytes_EntryTakenBackOutIsNotRetracked(t *testing.T) {
+	t.Parallel()
+	key := func(target string) string { return cacheKeyVersion + "|GET|" + target }
+	gate := newCacheTestGate(true)
+	evicted := make(chan error, 1)
 	app := fiber.New()
-	app.Use(New(Config{
-		Expiration: time.Hour,
-		MaxBytes:   charged(defaultKey("/second"), 100, textPlain), // one entry
-		Storage:    storage,
-		accounting: probe.record,
-	}))
-	app.Get("/*", func(c fiber.Ctx) error { return c.Send(make([]byte, 100)) })
-
-	get := func(target string) (int, error) {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody))
-		if err != nil {
-			return 0, err
+	var entered atomic.Bool
+	storage := &hookedStorage{Memory: storagetest.New(), onDelete: func(k string) error {
+		if k == key("/first/100") && gate.park() {
+			return errors.New("storage unavailable")
 		}
-		return resp.StatusCode, resp.Body.Close()
+		return nil
+	}}
+	// /evict pops /first and /inflight, then parks deleting /first while /inflight is written.
+	storage.onSet = func(k string, _ time.Duration) error {
+		if k == bodyKey(key("/inflight/100")) && entered.CompareAndSwap(false, true) {
+			go func() {
+				resp, err := app.Test(apptest.Req(fiber.MethodGet, "/evict/150"))
+				if err == nil {
+					err = resp.Body.Close()
+				}
+				evicted <- err
+			}()
+			<-gate.entered
+		}
+		return nil
 	}
+	probe := &accountingProbe{}
+	maxBytes := charged(key("/first/100"), 100, textPlain) + charged(key("/inflight/100"), 100, textPlain)
+	app.Use(New(Config{
+		ExpirationGenerator: stableAscendingExpiration(),
+		KeyGenerator:        pathKey,
+		MaxBytes:            maxBytes,
+		Storage:             storage,
+		accounting:          probe.record,
+	}))
+	app.Get("/:name/:size", func(c fiber.Ctx) error { return c.Send(make([]byte, fiber.Params[int](c, "size"))) })
 
-	var (
-		secondStatus int
-		errSecond    error
-	)
-	storage.duringFirstSet = func() {
-		secondStatus, errSecond = get("/second")
-		storage.SetErr(storagetest.OpDelete, "*", errors.New("delete failed"))
-	}
-	status, err := get("/first")
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, status)
-	require.NoError(t, errSecond)
-	require.Equal(t, fiber.StatusOK, secondStatus)
-	require.Equal(t, 2, probe.nodes())
-	require.Equal(t, charged(defaultKey("/first"), 100, textPlain)+charged(defaultKey("/second"), 100, textPlain), probe.counted())
+	require.Equal(t, cacheMiss, apptest.Expect(t, app, "/first/100", fiber.StatusOK).Header.Get("X-Cache"))
+	apptest.Expect(t, app, "/inflight/100", fiber.StatusOK)
+	close(gate.release)
+	require.NoError(t, apptest.Recv(t, evicted, 5*time.Second, "the evicting request did not finish"))
 
-	storage.ClearErrs()
-	status, err = get("/third")
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, status)
-	require.Equal(t, 1, probe.nodes())
-	require.Equal(t, charged(defaultKey("/third"), 100, textPlain), probe.counted())
-	require.Equal(t, 1, storage.bodiesOfSize(100))
+	require.Equal(t, 1, probe.nodes(), "only /first, whose delete failed, is tracked again")
+	require.Equal(t, charged(key("/first/100"), 100, textPlain), probe.counted())
 }
 
 // The in-memory store offers no seam between the two steps, so this one races
@@ -192,12 +216,8 @@ func Test_Cache_MaxBytes_ConcurrentStoresStayWithinLimit(t *testing.T) {
 // without being stored.
 func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 	t.Parallel()
-	storage := &blockingDeleteStorage{
-		Memory:         storagetest.New(),
-		deleteStarted:  make(chan struct{}),
-		continueDelete: make(chan struct{}),
-		key:            cacheKeyVersion + "|GET|/first/200",
-	}
+	gate := newCacheTestGate(true)
+	storage := cacheTestParkedDelete(cacheKeyVersion+"|GET|/first/200", gate, nil)
 	charge := func(target string, size int) uint {
 		return charged(cacheKeyVersion+"|GET|"+target, size, textPlain)
 	}
@@ -228,12 +248,12 @@ func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 		inFlightResp, inFlightErr = app.Test(httptest.NewRequest(fiber.MethodGet, "/inflight/600", http.NoBody))
 		close(inFlightDone)
 	}()
-	<-storage.deleteStarted
+	<-gate.entered
 
 	released := false
 	defer func() {
 		if !released {
-			close(storage.continueDelete)
+			close(gate.release)
 		}
 	}()
 
@@ -253,7 +273,7 @@ func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 	require.Equal(t, maxBytes, probe.counted())
 	require.Equal(t, 2, probe.nodes())
 
-	close(storage.continueDelete)
+	close(gate.release)
 	released = true
 	<-inFlightDone
 	require.NoError(t, inFlightErr)
@@ -291,52 +311,56 @@ func (s skipEmptySetStorage) SetWithContext(ctx context.Context, key string, val
 func Test_CacheStorage_HitServesNoBodyOfAnotherStore(t *testing.T) {
 	t.Parallel()
 	key := defaultKey("/")
-	noCache := map[string]string{fiber.HeaderCacheControl: "no-cache"}
+	// With and without MaxBytes: an entry carries its generation either way.
+	for _, unlimited := range []bool{false, true} {
+		suffix := "/unlimited=" + strconv.FormatBool(unlimited)
+		t.Run("metadata of one store, body of another"+suffix, func(t *testing.T) {
+			t.Parallel()
+			storage := storagetest.New()
+			var calls atomic.Int32
+			app := fiber.New()
+			app.Use(New(Config{Storage: storage, DisableMaxBytes: unlimited}))
+			app.Get("/", func(c fiber.Ctx) error {
+				if calls.Add(1) == 2 {
+					c.Type("html")
+					return c.SendString("<script>")
+				}
+				return c.SendString("text")
+			})
 
-	t.Run("metadata of one store, body of another", func(t *testing.T) {
-		t.Parallel()
-		storage := storagetest.New()
-		var calls atomic.Int32
-		app := fiber.New()
-		app.Use(New(Config{Storage: storage}))
-		app.Get("/", func(c fiber.Ctx) error {
-			if calls.Add(1) == 2 {
-				c.Type("html")
-				return c.SendString("<script>")
-			}
-			return c.SendString("text")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "text")
+			storage.Mu.RLock()
+			first := storage.Data[key]
+			storage.Mu.RUnlock()
+			require.NotEmpty(t, first)
+			revalidated := cacheTestCGet(t, app, "/", fiber.HeaderCacheControl, "no-cache")
+			cacheTestCRequireReply(t, revalidated, cacheMiss, "<script>")
+			storage.Mu.Lock()
+			storage.Data[key] = first
+			storage.Mu.Unlock()
+
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "text")
 		})
 
-		cacheTestCRequireReply(t, getRoot(t, app, nil), cacheMiss, "text")
-		storage.Mu.RLock()
-		first := storage.Data[key]
-		storage.Mu.RUnlock()
-		require.NotEmpty(t, first)
-		cacheTestCRequireReply(t, getRoot(t, app, noCache), cacheMiss, "<script>")
-		storage.Mu.Lock()
-		storage.Data[key] = first
-		storage.Mu.Unlock()
+		t.Run("bodiless replacement"+suffix, func(t *testing.T) {
+			t.Parallel()
+			var moved atomic.Bool
+			app := fiber.New()
+			app.Use(New(Config{Storage: skipEmptySetStorage{storagetest.New()}, DisableMaxBytes: unlimited}))
+			app.Get("/", func(c fiber.Ctx) error {
+				if moved.Load() {
+					return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
+				}
+				return c.SendString("page")
+			})
 
-		cacheTestCRequireReply(t, getRoot(t, app, nil), cacheMiss, "text")
-	})
-
-	t.Run("bodiless replacement", func(t *testing.T) {
-		t.Parallel()
-		var moved atomic.Bool
-		app := fiber.New()
-		app.Use(New(Config{Storage: skipEmptySetStorage{storagetest.New()}}))
-		app.Get("/", func(c fiber.Ctx) error {
-			if moved.Load() {
-				return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
-			}
-			return c.SendString("page")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "page")
+			moved.Store(true)
+			redirect := cacheTestCGet(t, app, "/", fiber.HeaderCacheControl, "no-cache")
+			require.Equal(t, fiber.StatusMovedPermanently, redirect.status)
+			got := cacheTestCGet(t, app, "/")
+			require.Equal(t, fiber.StatusMovedPermanently, got.status)
+			require.NotEqual(t, "page", got.body)
 		})
-
-		cacheTestCRequireReply(t, getRoot(t, app, nil), cacheMiss, "page")
-		moved.Store(true)
-		require.Equal(t, fiber.StatusMovedPermanently, getRoot(t, app, noCache).status)
-		got := getRoot(t, app, nil)
-		require.Equal(t, fiber.StatusMovedPermanently, got.status)
-		require.NotEqual(t, "page", got.body)
-	})
+	}
 }

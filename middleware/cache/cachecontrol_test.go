@@ -42,3 +42,31 @@ func Test_parseCacheControlDirectives_Elements(t *testing.T) {
 		})
 	}
 }
+
+// The smallest readable lifetime counts, never longer than the first (RFC 9111 Section 4.2.1).
+func Test_parseResponseCacheControl_SmallestLifetimeCounts(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		input           string
+		maxAge, sMaxAge uint64
+		maxAgeSet       bool
+		sMaxAgeSet      bool
+	}{
+		{input: "max-age=0, max-age=3600", maxAgeSet: true},
+		{input: "max-age=3600, max-age=0", maxAgeSet: true},
+		{input: "s-maxage=0, s-maxage=3600", sMaxAgeSet: true},
+		{input: "max-age=5, s-maxage=7, max-age=9, s-maxage=11", maxAge: 5, maxAgeSet: true, sMaxAge: 7, sMaxAgeSet: true},
+		{input: "max-age=soon, max-age=60", maxAge: 60, maxAgeSet: true},
+		{input: "s-maxage=, s-maxage=60", sMaxAge: 60, sMaxAgeSet: true},
+		{input: "max-age=60, s-maxage=x, s-maxage=7", maxAge: 60, maxAgeSet: true, sMaxAge: 7, sMaxAgeSet: true},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+			got := parseResponseCacheControl([]byte(tc.input))
+			require.Equal(t, tc.maxAgeSet, got.maxAgeSet)
+			require.Equal(t, tc.maxAge, got.maxAge)
+			require.Equal(t, tc.sMaxAgeSet, got.sMaxAgeSet)
+			require.Equal(t, tc.sMaxAge, got.sMaxAge)
+		})
+	}
+}

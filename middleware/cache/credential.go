@@ -248,7 +248,7 @@ func (r *refusalRecords) appendKey(buf []byte, c fiber.Ctx, generated string, va
 	}
 	buf = append(buf, '|')
 	if cfg.usesDefaultKeyGenerator {
-		buf = appendDefaultKey(buf, c, &r.family)
+		buf = appendRecordKey(buf, c, &r.family)
 		if creds.authorization {
 			buf = append(buf, "|auth="...)
 			buf = appendAuthHash(buf, fieldname.Lines(&c.Request().Header, fiber.HeaderAuthorization, canonical))

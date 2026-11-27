@@ -16,16 +16,15 @@ import (
 )
 
 // cacheTestCEvict sends GET /new through app in the background, a request the
-// test arranged to fail with a 500 because the eviction it starts cannot delete
-// the entry it picked. The channel yields what went wrong with the request or
-// with its answer, nil when nothing did.
+// test arranged to be answered unstored because the eviction it starts cannot
+// delete the entry it picked. The channel yields what went wrong, or nil.
 func cacheTestCEvict(app *fiber.App) <-chan error {
 	done := make(chan error, 1)
 	go func() {
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/new", http.NoBody))
 		if err == nil {
-			if resp.StatusCode != fiber.StatusInternalServerError {
-				err = errors.New("eviction did not fail")
+			if resp.StatusCode != fiber.StatusOK || resp.Header.Get("X-Cache") != cacheUnreachable {
+				err = errors.New("the request was not answered unstored")
 			}
 			if closeErr := resp.Body.Close(); closeErr != nil {
 				err = errors.Join(err, closeErr)
@@ -42,12 +41,13 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 	started := make(chan struct{})
 	resume := make(chan struct{})
 	var armed atomic.Bool
-	storage := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) {
+	storage := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) error {
 		// The read that restores the entry eviction picked parks until the test lets it go on.
 		if key == oldKey && armed.CompareAndSwap(true, false) {
 			close(started)
 			<-resume
 		}
+		return nil
 	}}
 	// Room for /old and /hot, so /new evicts /old.
 	stored := charged(oldKey, len("stale"), textPlain, "public, max-age=30") +
@@ -109,13 +109,9 @@ func Test_CacheStorage_SlowRestoreDoesNotBlockUnrelatedHit(t *testing.T) {
 
 func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 	t.Parallel()
-	storage := &blockingFailedEvictionStorage{
-		Memory:         storagetest.New(),
-		key:            cacheKeyVersion + "|GET|/old",
-		started:        make(chan struct{}),
-		continueDelete: make(chan struct{}),
-	}
-	stale := charged(storage.key, len("stale"), textPlain, "public, max-age=30")
+	key, gate := cacheKeyVersion+"|GET|/old", newCacheTestGate(false)
+	storage := cacheTestParkedDelete(key, gate, errors.New("eviction delete failed"))
+	stale := charged(key, len("stale"), textPlain, "public, max-age=30")
 	slot := charged(cacheKeyVersion+"|GET|/slot", len("x"), textPlain, "public, max-age=60")
 	fresh := charged(cacheKeyVersion+"|GET|/new", len("012345678"), textPlain, "public, max-age=60")
 	probe := &accountingProbe{}
@@ -142,13 +138,13 @@ func Test_CacheStorage_RestoredGenerationSurvivesIndexReuse(t *testing.T) {
 
 	apptest.BodyBytes(t, apptest.Do(t, app, "/old"))
 
-	storage.armed.Store(true)
+	gate.armed.Store(true)
 	evictionDone := cacheTestCEvict(app)
 
 	var releaseOnce sync.Once
-	release := func() { releaseOnce.Do(func() { close(storage.continueDelete) }) }
+	release := func() { releaseOnce.Do(func() { close(gate.release) }) }
 	defer release()
-	apptest.Recv(t, storage.started, 2*time.Second, "eviction did not reach blocked deletion")
+	apptest.Recv(t, gate.entered, 2*time.Second, "eviction did not reach blocked deletion")
 
 	cacheTestAExpect(t, app, "/slot", cacheMiss)
 	release()

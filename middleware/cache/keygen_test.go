@@ -32,56 +32,77 @@ type keygenCase struct {
 
 func keygenCorpus() []keygenCase {
 	return []keygenCase{
-		{name: "noquery", uri: "/demo", want: keyStart + keyNoHeaders},
-		{name: "single", uri: "/demo?foo=bar", want: keyStart + "foo=bar" + keyNoHeaders},
+		{name: "noquery", uri: "/", want: keyStart + keyNoHeaders},
+		{name: "single", uri: "/?foo=bar", want: keyStart + "foo=bar" + keyNoHeaders},
 		// The query as sent: Bind reads doc and doc[] as one field, and a proxy forwards a trailing &.
-		{name: "multi_dup", uri: "/demo?b=2&a=1&a=3", want: keyStart + "b=2&a=1&a=3" + keyNoHeaders},
-		{name: "dup_order", uri: "/demo?a=3&a=1", want: keyStart + "a=3&a=1" + keyNoHeaders},
-		{name: "bind_spellings", uri: "/view?doc[]=welcome&doc=minutes", want: keyStart + "doc[]=welcome&doc=minutes" + keyNoHeaders},
-		{name: "bind_spellings_swapped", uri: "/view?doc=minutes&doc[]=welcome", want: keyStart + "doc=minutes&doc[]=welcome" + keyNoHeaders},
-		{name: "trailing_pair", uri: "/p?id=7&", want: keyStart + "id=7&" + keyNoHeaders},
-		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: keyStart + "x=1" + keyNoHeaders},
-		{name: "query_escape", uri: "/p?k=a b&z=%2F&k=z", want: keyStart + "k=a b&z=%2F&k=z" + keyNoHeaders},
-		{name: "query_delims", uri: "/p?k=a|b:c", want: keyStart + "k=a\\pb\\cc" + keyNoHeaders},
-		{name: "with_headers", uri: "/p?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: keyStart + "foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
-		{name: "with_cookie", uri: "/p?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: keyStart + "foo=bar" + keyNoHeaders + "|c=sid:sha256:ccfb62d77d32969b64f7920fe3bfb66c50cbf9e9faea6f69222c34c7e5f30627"},
+		{name: "multi_dup", uri: "/?b=2&a=1&a=3", want: keyStart + "b=2&a=1&a=3" + keyNoHeaders},
+		{name: "dup_order", uri: "/?a=3&a=1", want: keyStart + "a=3&a=1" + keyNoHeaders},
+		{name: "bind_spellings", uri: "/?doc[]=welcome&doc=minutes", want: keyStart + "doc[]=welcome&doc=minutes" + keyNoHeaders},
+		{name: "bind_spellings_swapped", uri: "/?doc=minutes&doc[]=welcome", want: keyStart + "doc=minutes&doc[]=welcome" + keyNoHeaders},
+		{name: "trailing_pair", uri: "/?id=7&", want: keyStart + "id=7&" + keyNoHeaders},
+		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: `scheme=http|host=example.com|/a\pb\cc\\d|q=x=1` + keyNoHeaders},
+		{name: "query_escape", uri: "/?k=a b&z=%2F&k=z", want: keyStart + "k=a b&z=%2F&k=z" + keyNoHeaders},
+		{name: "query_spellings", uri: "/?b=%41&a=x+y&a=x%20y&b=A", want: keyStart + "b=%41&a=x+y&a=x%20y&b=A" + keyNoHeaders},
+		{name: "query_delims", uri: `/?b=x|y&a=1:2&c=\`, want: keyStart + `b=x\py&a=1\c2&c=\\` + keyNoHeaders},
+		{name: "long_query", uri: "/?b=" + strings.Repeat("x", 300) + "&a=1", want: keyStart + boundKeySegment("b="+strings.Repeat("x", 300)+"&a=1") + keyNoHeaders},
+		{name: "with_headers", uri: "/?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: keyStart + "foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
+		{name: "with_cookie", uri: "/?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: keyStart + "foo=bar" + keyNoHeaders + "|c=sid:sha256:ccfb62d77d32969b64f7920fe3bfb66c50cbf9e9faea6f69222c34c7e5f30627"},
 		// A missing and an empty cookie leave nothing after the name, and share a key.
-		{name: "cookie_empty", uri: "/p", cookie: "sid=", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:"},
-		{name: "cookie_absent", uri: "/p", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:"},
-		{name: "cookie_delims", uri: "/p", cookie: "sid=a|b:c", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:sha256:166f86ddd38c71229af5fa7dfacf4c0bd335848667481d07c6cbd2aabc727955"},
-		{name: "cookie_long", uri: "/p", cookie: "sid=" + strings.Repeat("x", 300), keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:sha256:95e98730d96605ac7a50fb8dfcd3e46bea8b14b5450f5ecb4fea105fa8564ac0"},
-		{name: "cookie_several", uri: "/p", cookie: "a=1; b=2", keyCooks: []string{"a", "b", "c"}, want: keyStart + keyNoHeaders + "|c=a:sha256:f16ba6fa61da3398815be2a6c0f7cb1351982dbcc6c64bbeb9b65f672a8b102a|b:sha256:7f774bb46e7e342a2d9d0514b27cee622012f7415645345054f8cd31e1dda661|c:"},
-		{name: "long_query", uri: "/p?q=" + strings.Repeat("x", 300), want: keyStart + "sha256:4d86f7dbfc8b3bfe229da7e27f4ac8f6cf8114e24e5cb6b5af1d09cb4cc3d982" + keyNoHeaders},
-		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: keyStart + "a=1" + keyNoHeaders},
-		{name: "disable_query", uri: "/p?foo=bar", noQuery: true, want: "scheme=http|host=example.com|/" + keyNoHeaders},
-		{name: "header_val_delims", uri: "/p", headers: map[string]string{"Accept": "a|b:c"}, want: keyStart + "|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
-		{name: "empty_query", uri: "/p?", want: keyStart + keyNoHeaders},
-		{name: "many_params", uri: "/p?" + strings.Repeat("k=v&", 200) + "z=1", want: keyStart + "sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829" + keyNoHeaders},
-		{name: "query_empty_body", uri: "/q", method: fiber.MethodQuery, want: keyStart + keyNoHeaders + "|m=0|0|b="},
-		{name: "query_body", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
-		{name: "query_body_delims", uri: "/q", method: fiber.MethodQuery, body: "a|b:c", want: keyStart + keyNoHeaders + "|m=0|0|b=a\\pb\\cc"},
-		{name: "query_with_querystring", uri: "/q?x=1", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + "x=1" + keyNoHeaders + "|m=0|0|b=foo=bar"},
-		{name: "query_body_metadata", uri: "/q", method: fiber.MethodQuery, body: "foo=bar", headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|1|application/json|b=foo=bar"},
+		{name: "cookie_empty", uri: "/", cookie: "sid=", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:"},
+		{name: "cookie_absent", uri: "/", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:"},
+		{name: "cookie_delims", uri: "/", cookie: "sid=a|b:c", keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:sha256:166f86ddd38c71229af5fa7dfacf4c0bd335848667481d07c6cbd2aabc727955"},
+		{name: "cookie_long", uri: "/", cookie: "sid=" + strings.Repeat("x", 300), keyCooks: []string{"sid"}, want: keyStart + keyNoHeaders + "|c=sid:sha256:95e98730d96605ac7a50fb8dfcd3e46bea8b14b5450f5ecb4fea105fa8564ac0"},
+		{name: "cookie_several", uri: "/", cookie: "a=1; b=2", keyCooks: []string{"a", "b", "c"}, want: keyStart + keyNoHeaders + "|c=a:sha256:f16ba6fa61da3398815be2a6c0f7cb1351982dbcc6c64bbeb9b65f672a8b102a|b:sha256:7f774bb46e7e342a2d9d0514b27cee622012f7415645345054f8cd31e1dda661|c:"},
+		{name: "long_query", uri: "/?q=" + strings.Repeat("x", 300), want: keyStart + "sha256:4d86f7dbfc8b3bfe229da7e27f4ac8f6cf8114e24e5cb6b5af1d09cb4cc3d982" + keyNoHeaders},
+		{name: "long_path", uri: "/" + strings.Repeat("p", 300) + "?a=1", want: "scheme=http|host=example.com|" + boundKeySegment("/"+strings.Repeat("p", 300)) + "|q=a=1" + keyNoHeaders},
+		{name: "disable_query", uri: "/?foo=bar", noQuery: true, want: "scheme=http|host=example.com|/" + keyNoHeaders},
+		{name: "header_val_delims", uri: "/", headers: map[string]string{"Accept": "a|b:c"}, want: keyStart + "|h=accept:1|a\\pb\\cc|accept-encoding:0|accept-language:0"},
+		// The raw target where it differs from the routed path, an empty "?" included, and a fragment.
+		{name: "empty_query", uri: "/?", want: keyStart + "|p=/?" + keyNoHeaders},
+		{name: "target_fragment", uri: "/?a=1#top", want: keyStart + "a=1|f=top" + keyNoHeaders},
+		{name: "target_empty_fragment", uri: "/#", want: keyStart + "|f=" + keyNoHeaders},
+		{name: "target_query_in_fragment", uri: "/#a?b=1", want: keyStart + "|f=a?b=1" + keyNoHeaders},
+		{name: "target_empty_query_and_fragment", uri: "/?#top", want: keyStart + "|p=/?|f=top" + keyNoHeaders},
+		{name: "target_dot_segments", uri: "/a/../?x=1", want: keyStart + "x=1|p=/a/../" + keyNoHeaders},
+		{name: "target_escaped_letter", uri: "/%70age", want: "scheme=http|host=example.com|/page|q=|p=/%70age" + keyNoHeaders},
+		{name: "target_absolute_form", uri: "http://example.com/?x=1", want: keyStart + `x=1|p=http\c//example.com/` + keyNoHeaders},
+		{name: "target_delims_and_bound", uri: "/a|b/../#" + strings.Repeat("f:", 100), want: keyStart + `|p=/a\pb/../|f=` + boundKeySegment(strings.Repeat(`f\c`, 100)) + keyNoHeaders},
+		{name: "disable_query_target", uri: "/a/../?foo=bar#top", noQuery: true, want: "scheme=http|host=example.com|/|p=/a/../|f=top" + keyNoHeaders},
+		{name: "disable_query_empty_query", uri: "/?", noQuery: true, want: "scheme=http|host=example.com|/" + keyNoHeaders},
+		{name: "many_params", uri: "/?" + strings.Repeat("k=v&", 200) + "z=1", want: keyStart + "sha256:f8f7166c8aec35092b4c6f66a895ec9f302746c6310aa0dbfde45cbd30aa1829" + keyNoHeaders},
+		{name: "query_empty_body", uri: "/", method: fiber.MethodQuery, want: keyStart + keyNoHeaders + "|m=0|0|b="},
+		{name: "query_body", uri: "/", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
+		{name: "query_body_delims", uri: "/", method: fiber.MethodQuery, body: "a|b:c", want: keyStart + keyNoHeaders + "|m=0|0|b=a\\pb\\cc"},
+		{name: "query_with_querystring", uri: "/?x=1", method: fiber.MethodQuery, body: "foo=bar", want: keyStart + "x=1" + keyNoHeaders + "|m=0|0|b=foo=bar"},
+		{name: "query_body_metadata", uri: "/", method: fiber.MethodQuery, body: "foo=bar", headers: map[string]string{"Content-Type": "application/json", "Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|1|application/json|b=foo=bar"},
+		{name: "post_body", uri: "/", method: fiber.MethodPost, body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
+		{name: "post_body_metadata", uri: "/", method: fiber.MethodPost, body: "{}", headers: map[string]string{"Content-Type": "application/json"}, want: keyStart + keyNoHeaders + "|m=0|1|application/json|b={}"},
+		{name: "post_no_body", uri: "/", method: fiber.MethodPost, want: keyStart + keyNoHeaders},
+		{name: "get_body", uri: "/", body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
+		// What a GET or HEAD with a coding and no body leaves is never stored, so its key does not hold the coding.
+		{name: "get_encoding_no_body", uri: "/", headers: map[string]string{"Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders},
+		{name: "post_encoding_no_body", uri: "/", method: fiber.MethodPost, headers: map[string]string{"Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|0|b="},
+		{name: "post_encoding_empty_no_body", uri: "/", method: fiber.MethodPost, headers: map[string]string{"Content-Encoding": ""}, want: keyStart + keyNoHeaders + "|m=1||0|b="},
 		// The authority: the port is part of it, its delimiters are escaped like
 		// every other segment's, and past the bound it is hashed rather than
 		// allowed to grow the key.
-		{name: "host_port", uri: "/p", host: "example.com:8443", want: "scheme=http|host=example.com\\c8443|/|q=" + keyNoHeaders},
-		{name: "host_delims", uri: "/p", host: "a|b:c\\d", want: "scheme=http|host=a\\pb\\cc\\\\d|/|q=" + keyNoHeaders},
-		{name: "long_host", uri: "/p", host: strings.Repeat("h", 300), want: "scheme=http|host=" + boundKeySegment(strings.Repeat("h", 300)) + "|/|q=" + keyNoHeaders},
+		{name: "host_port", uri: "/", host: "example.com:8443", want: "scheme=http|host=example.com\\c8443|/|q=" + keyNoHeaders},
+		{name: "host_delims", uri: "/", host: "a|b:c\\d", want: "scheme=http|host=a\\pb\\cc\\\\d|/|q=" + keyNoHeaders},
+		{name: "long_host", uri: "/", host: strings.Repeat("h", 300), want: "scheme=http|host=" + boundKeySegment(strings.Repeat("h", 300)) + "|/|q=" + keyNoHeaders},
 	}
 }
 
-func buildKeygenCtx(tc *keygenCase) (fiber.Ctx, *Config) {
+// buildKeygenCtx returns tc's request context, released when the test ends, and its config as New fills it.
+func buildKeygenCtx(tb testing.TB, tc *keygenCase) (fiber.Ctx, *Config) {
+	tb.Helper()
+
 	app := fiber.New()
-	// Method must be set before AcquireCtx (fiber caches it); URI/body/headers are
-	// read live from the request afterwards.
+	// The request line is set before AcquireCtx, which caches the method and path.
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(cmp.Or(tc.method, fiber.MethodGet))
-	c := app.AcquireCtx(fctx)
-	c.Request().SetRequestURI(tc.uri)
-	// The authority is read live as well; a request without one is not what
-	// the key is built for, so the fixtures carry the host httptest would set.
-	c.Request().SetHost(cmp.Or(tc.host, "example.com"))
+	fctx.Request.SetRequestURI(tc.uri)
+	fctx.Request.SetHost(cmp.Or(tc.host, "example.com"))
+	c := apptest.CtxFor(tb, app, fctx)
 	if tc.body != "" {
 		c.Request().SetBody([]byte(tc.body))
 	}
@@ -106,13 +127,13 @@ func buildKeygenCtx(tc *keygenCase) (fiber.Ctx, *Config) {
 
 func Benchmark_defaultKeyGenerator(b *testing.B) {
 	cases := []struct{ name, uri string }{
-		{"noquery", "/demo"},
-		{"singleparam", "/demo?foo=bar"},
-		{"multiparam", "/demo?foo=bar&baz=qux&alpha=1"},
+		{"noquery", "/"},
+		{"singleparam", "/?foo=bar"},
+		{"multiparam", "/?foo=bar&baz=qux&alpha=1"},
 	}
 	for _, tc := range cases {
 		b.Run(tc.name, func(b *testing.B) {
-			c, cfg := buildKeygenCtx(&keygenCase{uri: tc.uri})
+			c, cfg := buildKeygenCtx(b, &keygenCase{uri: tc.uri})
 			b.ReportAllocs()
 			var s string
 			for b.Loop() {
@@ -138,7 +159,7 @@ func Test_defaultKeyGenerator_stableKeys(t *testing.T) {
 	for _, tc := range keygenCorpus() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			c, cfg := buildKeygenCtx(&tc)
+			c, cfg := buildKeygenCtx(t, &tc)
 			require.Equal(t, tc.want, defaultKeyGenerator(c, cfg))
 		})
 	}
@@ -200,13 +221,13 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 		want        []string
 		disableVary bool
 	}{
-		{name: "anonymous", want: []string{"v8|manifest|v8|GET|/demo", "v8|GET|/demo"}},
+		{name: "anonymous", want: []string{"v9|manifest|v9|GET|/demo", "v9|GET|/demo"}},
 		{
 			name: "authenticated",
 			auth: "Bearer token",
-			want: []string{"v8|manifest|v8|GET|/demo|auth=" + authHash, "v8|GET|/demo|auth=" + authHash},
+			want: []string{"v9|manifest|v9|GET|/demo|auth=" + authHash, "v9|GET|/demo|auth=" + authHash},
 		},
-		{name: "vary disabled", disableVary: true, want: []string{"v8|GET|/demo"}},
+		{name: "vary disabled", disableVary: true, want: []string{"v9|GET|/demo"}},
 	}
 
 	for _, tc := range tests {
@@ -215,12 +236,13 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 			// Every key the middleware reads, in order and without duplicates.
 			var mu sync.Mutex
 			var lookedUp []string
-			store := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) {
+			store := &hookedStorage{Memory: storagetest.New(), onGet: func(key string) error {
 				mu.Lock()
 				defer mu.Unlock()
 				if !slices.Contains(lookedUp, key) {
 					lookedUp = append(lookedUp, key)
 				}
+				return nil
 			}}
 			app := fiber.New()
 			app.Use(New(Config{
@@ -241,6 +263,65 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 			require.Equal(t, tc.want, lookedUp)
+		})
+	}
+}
+
+func Test_defaultKeyGenerator_KeysTheTargetAsSent(t *testing.T) {
+	t.Parallel()
+	paths := []string{"/page", "/pa%67e", "/x/../page", "/./page", "http://example.com/page"}
+	queries := []string{"", "?", "?a=1", "?a=1&b=2", "?b=2&a=1"}
+	fragments := []string{"", "#", "#top", "#a?b=1"}
+
+	for _, tc := range []struct {
+		name    string
+		keys    int
+		noQuery bool
+	}{
+		// No two targets are one to the key: the query is keyed as sent, in the order sent.
+		{name: "query keyed", keys: len(paths) * len(queries) * len(fragments)},
+		{name: "query left out", noQuery: true, keys: len(paths) * len(fragments)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			keys := map[string]struct{}{}
+			for _, path := range paths {
+				for _, query := range queries {
+					for _, fragment := range fragments {
+						c, cfg := buildKeygenCtx(t, &keygenCase{uri: path + query + fragment, noQuery: tc.noQuery})
+						require.Equal(t, "/page", c.Path(), path+query+fragment)
+						keys[defaultKeyGenerator(c, cfg)] = struct{}{}
+					}
+				}
+			}
+			require.Len(t, keys, tc.keys)
+		})
+	}
+}
+
+func Test_appendTargetAsSent_RewrittenQuery(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, target, path, keyed, want string
+		noQuery                         bool
+	}{
+		{name: "sent as keyed", target: "/page?a=1", path: "/page", keyed: "a=1"},
+		{name: "added", target: "/page", path: "/page", keyed: "a=1", want: "|n=/page"},
+		{name: "added to a rewritten path", target: "/old", path: "/page", keyed: "a=1", want: "|n=/old"},
+		{name: "added before a fragment", target: "/page#top", path: "/page", keyed: "a=1", want: "|n=/page|f=top"},
+		{name: "added behind a bare question mark", target: "/page?", path: "/page", keyed: "a=1", want: "|p=/page?"},
+		{name: "rewritten", target: "/page?b=2", path: "/page", keyed: "a=1", want: "|p=/page?b=2"},
+		{name: "removed", target: "/page?b=2", path: "/page", want: "|p=/page?b=2"},
+		{name: "added, left out", target: "/page", path: "/page", keyed: "a=1", noQuery: true},
+		{name: "added, moved, left out", target: "/old", path: "/page", keyed: "a=1", noQuery: true, want: "|p=/old"},
+		{name: "rewritten, left out", target: "/page?b=2", path: "/page", keyed: "a=1", noQuery: true},
+		{name: "removed, left out", target: "/page?b=2", path: "/page", noQuery: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := &Config{DisableQueryKeys: tc.noQuery}
+			got := appendTargetAsSent(nil, []byte(tc.target), tc.path, []byte(tc.keyed), cfg)
+			require.Equal(t, tc.want, string(got))
 		})
 	}
 }
@@ -347,7 +428,7 @@ func Test_appendCanonicalHeaderSubset_HashedAndVerbatimSegmentsDiffer(t *testing
 func Test_appendCanonicalCookieSubset(t *testing.T) {
 	t.Parallel()
 	segment := func(cookie string, names ...string) string {
-		c, _ := buildKeygenCtx(&keygenCase{uri: "/", cookie: cookie})
+		c, _ := buildKeygenCtx(t, &keygenCase{uri: "/", cookie: cookie})
 		return string(appendCanonicalCookieSubset(nil, c, &Config{KeyCookies: names}))
 	}
 
@@ -402,7 +483,7 @@ func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 		session = "sess_0123456789abcdefghijklmnopqrstuvwxyz"
 		other   = "sess_other_other_other_other_other_other"
 	)
-	withCookie := func(value string) map[string]string { return map[string]string{"Cookie": "session=" + value} }
+	withCookie := func(value string) []string { return []string{"Cookie", "session=" + value} }
 
 	for _, kind := range storageKinds {
 		t.Run(kind, func(t *testing.T) {
@@ -412,13 +493,13 @@ func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 			app.Use(New(Config{Storage: storage, KeyCookies: []string{"session"}}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("for:" + c.Cookies("session")) })
 
-			cacheTestCRequireReply(t, getRoot(t, app, withCookie(session)), cacheMiss, "for:"+session)
-			require.Equal(t, cacheHit, getRoot(t, app, withCookie(session)).cache)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", withCookie(session)...), cacheMiss, "for:"+session)
+			require.Equal(t, cacheHit, cacheTestCGet(t, app, "/", withCookie(session)...).cache)
 
-			cacheTestCRequireReply(t, getRoot(t, app, withCookie(other)), cacheMiss, "for:"+other)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", withCookie(other)...), cacheMiss, "for:"+other)
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
-			require.Equal(t, cacheHit, getRoot(t, app, withCookie("")).cache, "an empty cookie is the partition of none")
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
+			require.Equal(t, cacheHit, cacheTestCGet(t, app, "/", withCookie("")...).cache, "an empty cookie is the partition of none")
 
 			external, ok := storage.(*storagetest.Memory)
 			if !ok {
@@ -442,7 +523,7 @@ func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
 // Hashing a cookie value is on the hit path, so it must not allocate: the digest goes into the key
 // buffer. Sequential: testing.AllocsPerRun panics during a parallel test.
 func Test_appendCanonicalCookieSubset_DoesNotAllocate(t *testing.T) {
-	c, _ := buildKeygenCtx(&keygenCase{uri: "/", cookie: "sid=sess_0123456789abcdefghijklmnopqrstuvwxyz"})
+	c, _ := buildKeygenCtx(t, &keygenCase{uri: "/", cookie: "sid=sess_0123456789abcdefghijklmnopqrstuvwxyz"})
 	dst := make([]byte, 0, 512)
 
 	cfg := &Config{KeyCookies: []string{"sid"}}
@@ -463,7 +544,7 @@ func Test_connectionWithholdsHeader_DoesNotAllocate(t *testing.T) {
 
 // Sequential: testing.AllocsPerRun panics during a parallel test.
 func Test_credentialsOf_DoesNotAllocate(t *testing.T) {
-	c, cfg := buildKeygenCtx(&keygenCase{uri: "/", headers: map[string]string{fiber.HeaderAuthorization: "Basic c2l0ZTpwYXNz"}, cookie: "session=a"})
+	c, cfg := buildKeygenCtx(t, &keygenCase{uri: "/", headers: map[string]string{fiber.HeaderAuthorization: "Basic c2l0ZTpwYXNz"}, cookie: "session=a"})
 	creds := cfg.credentialsOf(c, []string{"cookie"}, true)
 	require.True(t, creds.selected)
 	require.Zero(t, testing.AllocsPerRun(100, func() { cfg.credentialsOf(c, []string{"cookie"}, true) }))

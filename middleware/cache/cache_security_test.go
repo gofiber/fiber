@@ -11,6 +11,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,6 +26,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
+	"github.com/gofiber/fiber/v3/middleware/helmet"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -71,7 +75,7 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 		},
 		{name: "long path segment is hashed", route: longPath, url: longPath, cache: []string{cacheMiss, cacheHit}},
 		{
-			// Malformed query string with invalid encoding: not a crash, and hashed as-is.
+			// Malformed query string with invalid encoding: keyed as sent.
 			name:  "malformed query string",
 			url:   "/?invalid=%ZZ%XX",
 			cache: []string{cacheMiss, cacheHit},
@@ -191,6 +195,537 @@ func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 	}
 }
 
+// A handler can echo the raw target, and Bind and a proxied upstream read the query as sent, so only targets
+// spelled alike share an entry.
+func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, first, second string }{
+		{name: "a raw byte and its escape", first: `/?q="><script>&x=1`, second: "/?q=%22%3E%3Cscript%3E&x=1"},
+		{name: "an escaped letter", first: "/?a=%41&b=1", second: "/?a=A&b=1"},
+		{name: "the case of an escape", first: "/?a=%2f&b=1", second: "/?a=%2F&b=1"},
+		{name: "a plus and an escaped space", first: "/?a=x+y&b=1", second: "/?a=x%20y&b=1"},
+		{name: "an escaped name", first: "/?%61=1&b=2", second: "/?a=1&b=2"},
+		{name: "no value and an empty one", first: "/?a&b=1", second: "/?a=&b=1"},
+		{name: "an empty parameter", first: "/?a=1&&b=2", second: "/?a=1&b=2"},
+		{name: "a trailing separator", first: "/?a=1&b=2&", second: "/?a=1&b=2"},
+		{name: "the values of one name", first: "/?a=1&a=2&b=3", second: "/?a=2&a=1&b=3"},
+		{name: "two spellings of one name", first: "/?a=1&%61=2&b=3", second: "/?%61=2&a=1&b=3"},
+		{name: "a value that holds the separator of a name", first: "/?a=1&a=b=c", second: "/?a=b=c&a=1"},
+		// One name to the parser alone, which keeps a "%" that begins no escape and whatever follows it.
+		{name: "one name by a stray percent sign", first: "/?x%+=1&x%%2B=2", second: "/?x%%2B=2&x%+=1"},
+		{name: "two names", first: "/?a=1&b=2", second: "/?b=2&a=1"},
+		{name: "two names around a repeated one", first: "/?b=2&a=1&a=3", second: "/?a=1&b=2&a=3"},
+		{name: "two names, one escaped", first: "/?b=2&%61=1", second: "/?%61=1&b=2"},
+		{name: "a fragment", first: `/page#"><script>alert(1)</script>`, second: "/page"},
+		{name: "an empty fragment", first: "/page#", second: "/page"},
+		{name: "a fragment behind a query", first: "/page?a=1#x", second: "/page?a=1"},
+		{name: "segments that dots remove", first: `/"><script>alert(1)</script>/../../page`, second: "/page"},
+		{name: "a dot segment", first: "/./page", second: "/page"},
+		{name: "an escaped letter of the path", first: "/pa%67e", second: "/page"},
+		{name: "an absolute-form target", first: "http://example.com/page", second: "/page"},
+		{name: "a question mark no query follows", first: "/page?", second: "/page"},
+		{name: "a path a middleware rewrote", first: "/old", second: "/page"},
+		{name: "a query a middleware removed", first: `/bare?q="><script>`, second: "/bare"},
+		{name: "two queries a middleware removed", first: `/bare?q="><script>`, second: "/bare?q=%22%3E%3Cscript%3E"},
+		// The query the middleware gives a target without one is keyed for both; only one of them sent it.
+		{name: "a query a middleware added", first: "/added", second: "/added?lang=en"},
+		{name: "a query a middleware added to a path it rewrote", first: "/moved", second: "/moved?lang=en"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			// Rewrites registered ahead of the cache: the handler still reads the target that was sent.
+			app.Use(func(c fiber.Ctx) error {
+				switch c.Path() {
+				case "/old":
+					c.Path("/page")
+				case "/bare":
+					c.Request().URI().SetQueryString("")
+				case "/added":
+					c.Request().URI().SetQueryString("lang=en")
+				case "/moved":
+					c.Request().URI().SetQueryString("lang=en")
+					c.Path("/page")
+				}
+				return c.Next()
+			})
+			app.Use(New(Config{Expiration: time.Hour}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString(c.OriginalURL() + " a=" + c.Query("a")) })
+			wire := cacheTestCWire{t: t, app: app}
+			answer := func(target string) string {
+				var uri fasthttp.URI
+				require.NoError(t, uri.Parse(nil, []byte(target)))
+				return target + " a=" + string(uri.QueryArgs().Peek("a"))
+			}
+
+			cacheTestCRequireReply(t, wire.target(tc.first), cacheMiss, answer(tc.first))
+			cacheTestCRequireReply(t, wire.target(tc.second), cacheMiss, answer(tc.second))
+			cacheTestCRequireReply(t, wire.target(tc.first), cacheHit, answer(tc.first), "the first spelling keeps its entry")
+		})
+	}
+}
+
+func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
+	app.All("/", func(c fiber.Ctx) error { return c.SendString(c.Method() + ":" + string(c.Body())) })
+
+	for _, step := range []struct{ method, body, cache string }{
+		{method: fiber.MethodPost, body: "alice's search", cache: cacheMiss},
+		{method: fiber.MethodPost, body: "bob's search", cache: cacheMiss},
+		{method: fiber.MethodPost, body: "alice's search", cache: cacheHit},
+		{method: fiber.MethodPost, cache: cacheMiss},
+		{method: fiber.MethodPost, cache: cacheHit},
+		{method: fiber.MethodGet, cache: cacheMiss},
+		{method: fiber.MethodGet, body: "alice's search", cache: cacheMiss},
+		{method: fiber.MethodGet, cache: cacheHit},
+	} {
+		var body io.Reader = http.NoBody
+		if step.body != "" {
+			body = strings.NewReader(step.body)
+		}
+		got := doRequest(t, app, httptest.NewRequest(step.method, "/", body))
+		cacheTestCRequireReply(t, got, step.cache, step.method+":"+step.body, "%s %q", step.method, step.body)
+	}
+}
+
+// c.Body() answers a request that names a Content-Encoding and sends no body by that coding, with a 501 for
+// one it cannot undo. A GET or HEAD is served the entry its key selects, which holds no coding, and what its
+// handler answers is neither stored nor allowed to replace that entry; another method keys the coding apart.
+func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
+	t.Parallel()
+	read := func(c fiber.Ctx) error { return c.SendString("body=" + string(c.Body())) }
+	methods := []string{fiber.MethodGet, fiber.MethodHead, fiber.MethodPost}
+
+	for _, method := range methods {
+		keyed := method == fiber.MethodPost
+		for _, tc := range []struct {
+			encoding, body string
+			status         int // what c.Body() leaves on the answer to a request with that encoding and no body
+		}{
+			{encoding: "compress", status: fiber.StatusNotImplemented, body: "body=Not Implemented"},
+			{encoding: "x-compress", status: fiber.StatusNotImplemented, body: "body=Not Implemented"},
+			{encoding: "gzip", status: fiber.StatusOK, body: "body=EOF"},
+		} {
+			t.Run(method+"/"+tc.encoding, func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New()
+				app.Use(New(Config{Expiration: time.Hour, Methods: methods}))
+				app.Add([]string{fiber.MethodGet, fiber.MethodPost}, "/", read)
+				send := func(opts ...apptest.Option) reply { return doRequest(t, app, apptest.Req(method, "/", opts...)) }
+				requireReply := func(got reply, cache string, status int, body string) {
+					t.Helper()
+					require.Equal(t, cache, got.cache)
+					require.Equal(t, status, got.status)
+					if method != fiber.MethodHead {
+						require.Equal(t, body, got.body)
+					}
+				}
+
+				requireReply(send(), cacheMiss, fiber.StatusOK, "body=")
+				requireReply(send(), cacheHit, fiber.StatusOK, "body=")
+
+				coded := []apptest.Option{apptest.WithHeader(fiber.HeaderContentEncoding, tc.encoding)}
+				revalidated := send(append(coded, apptest.WithHeader(fiber.HeaderCacheControl, "no-cache"))...)
+				if keyed {
+					requireReply(revalidated, cacheMiss, tc.status, tc.body)
+					requireReply(send(coded...), cacheHit, tc.status, tc.body)
+				} else {
+					requireReply(revalidated, cacheUnreachable, tc.status, tc.body)
+					requireReply(send(coded...), cacheHit, fiber.StatusOK, "body=")
+				}
+
+				requireReply(send(), cacheHit, fiber.StatusOK, "body=")
+			})
+		}
+	}
+
+	t.Run("the name spelled as it was sent", func(t *testing.T) {
+		t.Parallel()
+		wire := cacheTestCExactWire(t, read)
+		for _, step := range []struct {
+			cache, body string
+			lines       []string
+		}{
+			{cache: cacheMiss, body: "body="},
+			{lines: []string{"content-encoding: gzip", "cache-control: no-cache"}, cache: cacheUnreachable, body: "body=EOF"},
+			{lines: []string{"content-encoding: gzip"}, cache: cacheHit, body: "body="},
+			{cache: cacheHit, body: "body="},
+		} {
+			cacheTestCRequireReply(t, wire.get(step.lines...), step.cache, step.body, "%v", step.lines)
+		}
+	})
+}
+
+// A downstream cache must split a hit by the headers the key splits by (RFC 9111 §4.1).
+func Test_Cache_Security_HitNamesTheHeadersTheKeySplitsBy(t *testing.T) {
+	t.Parallel()
+	page := func(c fiber.Ctx) error { return c.SendString("page of tenant " + c.Get("X-Tenant")) }
+	withHeader := func(name, value string) fiber.Handler {
+		return func(c fiber.Ctx) error {
+			c.Set(name, value)
+			return page(c)
+		}
+	}
+
+	for _, tc := range []struct {
+		route    fiber.Handler // the handler's own, page when nil
+		name     string
+		wantVary string // of the hit; the miss has the handler's own
+		wantCC   string // the start of the hit's Cache-Control
+		cfg      Config
+	}{
+		{name: "the default KeyHeaders", wantVary: "Accept, Accept-Encoding, Accept-Language", wantCC: "public, max-age="},
+		{name: "KeyHeaders", cfg: Config{KeyHeaders: []string{"X-Tenant"}}, wantVary: "X-Tenant", wantCC: "public, max-age="},
+		{name: "KeyHeaders left empty", cfg: Config{KeyHeaders: []string{}}, wantCC: "public, max-age="},
+		{
+			name: "KeyCookies", cfg: Config{KeyHeaders: []string{"X-Tenant"}, KeyCookies: []string{"session"}},
+			wantVary: "X-Tenant, Cookie", wantCC: "private, max-age=",
+		},
+		{
+			name: "KeyCredentialHeaders", cfg: Config{KeyHeaders: []string{"X-Tenant"}, KeyCredentialHeaders: []string{"X-Token"}},
+			wantVary: "X-Tenant, X-Token", wantCC: "private, max-age=",
+		},
+		{
+			name:     "a custom KeyGenerator holds the KeyCredentialHeaders alone",
+			cfg:      Config{KeyGenerator: pathKey, KeyHeaders: []string{"X-Tenant"}, KeyCredentialHeaders: []string{"X-Token"}},
+			wantVary: "X-Token", wantCC: "private, max-age=",
+		},
+		{name: "a custom KeyGenerator without any", cfg: Config{KeyGenerator: pathKey, KeyHeaders: []string{"X-Tenant"}}, wantCC: "public, max-age="},
+		{
+			name: "after the names the response has, none repeated", cfg: Config{KeyHeaders: []string{"X-Tenant", "Accept"}},
+			route: withHeader("Vary", "accept, Origin"), wantVary: "accept, Origin, X-Tenant", wantCC: "public, max-age=",
+		},
+		{name: "DisableCacheControl", cfg: Config{KeyHeaders: []string{"X-Tenant"}, DisableCacheControl: true}},
+		{
+			name: "a Cache-Control of the handler's own", cfg: Config{KeyHeaders: []string{"X-Tenant"}},
+			route: withHeader(fiber.HeaderCacheControl, "max-age=60"), wantCC: "max-age=60",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := tc.cfg
+			cfg.Expiration = time.Hour
+			app := fiber.New()
+			app.Use(New(cfg))
+			route := tc.route
+			if route == nil {
+				route = page
+			}
+			app.Get("/", route)
+
+			send := func() *http.Response {
+				return apptest.Do(t, app, apptest.Req(fiber.MethodGet, "/",
+					apptest.WithHeader("X-Tenant", "acme"), apptest.WithHeader("X-Token", "t0ken"), apptest.WithHeader(fiber.HeaderCookie, "session=alice")))
+			}
+			require.Equal(t, cacheMiss, send().Header.Get("X-Cache"))
+
+			hit := send()
+			require.Equal(t, cacheHit, hit.Header.Get("X-Cache"))
+			require.Equal(t, "page of tenant acme", apptest.Body(t, hit))
+			if tc.wantCC == "" {
+				require.Empty(t, hit.Header.Values(fiber.HeaderCacheControl))
+			} else {
+				require.True(t, strings.HasPrefix(hit.Header.Get(fiber.HeaderCacheControl), tc.wantCC), "Cache-Control %q", hit.Header.Get(fiber.HeaderCacheControl))
+			}
+			if tc.wantVary == "" {
+				require.Empty(t, hit.Header.Values(fiber.HeaderVary))
+			} else {
+				require.Equal(t, []string{tc.wantVary}, hit.Header.Values(fiber.HeaderVary))
+			}
+		})
+	}
+}
+
+// No Vary names a body, so a hit for a request with one is private, unless it is a QUERY's (RFC 10008).
+func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
+	t.Parallel()
+	const keyHeaders, bodyFields = "Accept, Accept-Encoding, Accept-Language", ", Content-Encoding, Content-Type"
+	for _, tc := range []struct {
+		name, method, body, encoding string
+		wantCC, wantVary             string
+		status                       int
+		custom                       bool // keyed by a KeyGenerator of its own that holds the body
+	}{
+		{
+			name: "a POST under a KeyGenerator of its own", method: fiber.MethodPost, body: "x", custom: true,
+			status: fiber.StatusOK, wantCC: "private, max-age=",
+		},
+		{
+			name: "a QUERY under a KeyGenerator of its own", method: fiber.MethodQuery, body: "x", custom: true,
+			status: fiber.StatusOK, wantCC: "public, max-age=",
+		},
+		{name: "a GET under a KeyGenerator of its own", method: fiber.MethodGet, custom: true, status: fiber.StatusOK, wantCC: "public, max-age="},
+		{name: "a plain GET", method: fiber.MethodGet, status: fiber.StatusOK, wantCC: "public, max-age=", wantVary: keyHeaders},
+		{
+			name: "a Content-Encoding without a body", method: fiber.MethodPost, encoding: "compress",
+			status: fiber.StatusNotImplemented, wantCC: "public, max-age=", wantVary: keyHeaders + bodyFields,
+		},
+		{name: "a GET with a body", method: fiber.MethodGet, body: "x", status: fiber.StatusOK, wantCC: "private, max-age=", wantVary: keyHeaders + bodyFields},
+		{name: "a POST", method: fiber.MethodPost, body: "x", status: fiber.StatusOK, wantCC: "private, max-age=", wantVary: keyHeaders + bodyFields},
+		{name: "a QUERY", method: fiber.MethodQuery, body: "x", status: fiber.StatusOK, wantCC: "public, max-age=", wantVary: keyHeaders + bodyFields},
+		{name: "a QUERY without a body", method: fiber.MethodQuery, status: fiber.StatusOK, wantCC: "public, max-age=", wantVary: keyHeaders + bodyFields},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodQuery}}
+			if tc.custom {
+				cfg.KeyGenerator = func(c fiber.Ctx) string { return c.Path() + "|" + string(c.Body()) }
+			}
+			app := fiber.New()
+			app.Use(New(cfg))
+			app.All("/", func(c fiber.Ctx) error { return c.SendString("body=" + string(c.Body())) })
+			send := func() *http.Response {
+				var body io.Reader = http.NoBody
+				if tc.body != "" {
+					body = strings.NewReader(tc.body)
+				}
+				req := httptest.NewRequest(tc.method, "/", body)
+				apptest.WithHeaderIf(fiber.HeaderContentEncoding, tc.encoding)(req)
+				return apptest.Do(t, app, req)
+			}
+			require.Equal(t, cacheMiss, send().Header.Get("X-Cache"))
+
+			hit := send()
+			require.Equal(t, cacheHit, hit.Header.Get("X-Cache"))
+			require.Equal(t, tc.status, hit.StatusCode)
+			require.True(t, strings.HasPrefix(hit.Header.Get(fiber.HeaderCacheControl), tc.wantCC), "Cache-Control %q", hit.Header.Get(fiber.HeaderCacheControl))
+			if tc.wantVary == "" {
+				require.Empty(t, hit.Header.Values(fiber.HeaderVary))
+			} else {
+				require.Equal(t, []string{tc.wantVary}, hit.Header.Values(fiber.HeaderVary))
+			}
+		})
+	}
+}
+
+func Test_Cache_Security_NextSkipsTheLookup(t *testing.T) {
+	t.Parallel()
+	var handled, asked atomic.Int32
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour, Next: func(c fiber.Ctx) bool {
+		asked.Add(1)
+		return c.Get("X-API-Key") == ""
+	}}))
+	app.Get("/", func(c fiber.Ctx) error {
+		handled.Add(1)
+		if c.Get("X-API-Key") != "secret" {
+			return c.Status(fiber.StatusUnauthorized).SendString("no key")
+		}
+		return c.SendString("confidential")
+	})
+
+	for _, step := range []struct {
+		key, cache, body string
+		status           int
+		handled, asked   int32 // how often the handler has run and Next been asked by then
+	}{
+		{key: "secret", cache: cacheMiss, status: fiber.StatusOK, body: "confidential", handled: 1, asked: 2},
+		{key: "secret", cache: cacheHit, status: fiber.StatusOK, body: "confidential", handled: 1, asked: 3},
+		{cache: cacheUnreachable, status: fiber.StatusUnauthorized, body: "no key", handled: 2, asked: 4},
+		{key: "secret", cache: cacheHit, status: fiber.StatusOK, body: "confidential", handled: 2, asked: 5},
+	} {
+		got := cacheTestCGet(t, app, "/", "X-API-Key", step.key)
+		require.Equal(t, step.status, got.status, "key %q", step.key)
+		cacheTestCRequireReply(t, got, step.cache, step.body, "key %q", step.key)
+		require.Equal(t, step.handled, handled.Load(), "handler runs, key %q", step.key)
+		require.Equal(t, step.asked, asked.Load(), "times Next was asked, key %q", step.key)
+	}
+}
+
+func Test_Cache_Security_HitDoesNotShareTheStoredBody(t *testing.T) {
+	t.Parallel()
+	const body = "card 4111111111111111"
+	for _, kind := range storageKinds {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				if c.Get("X-Mask") != "" {
+					masked := c.Response().Body()
+					for i := range masked {
+						if masked[i] >= '0' && masked[i] <= '9' {
+							masked[i] = '#'
+						}
+					}
+				}
+				return err
+			})
+			app.Use(New(Config{Storage: storageOf(kind), Expiration: time.Hour}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString(body) })
+
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, body)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Mask", "1"), cacheHit, "card ################")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, body, "the entry is as it was stored")
+		})
+	}
+}
+
+func Test_Cache_Security_HitKeepsTheHeadersThatRestrictTheBody(t *testing.T) {
+	t.Parallel()
+	kept := map[string][]string{}
+	for name := range keptHeaders {
+		kept[name] = []string{"value of " + name}
+	}
+	kept[fiber.HeaderContentSecurityPolicy] = []string{"default-src 'none'", "sandbox"}
+
+	for _, kind := range storageKinds {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			// A header set in front of the cache is replaced by the one the response was stored with.
+			app.Use(func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderXFrameOptions, "SAMEORIGIN")
+				return c.Next()
+			})
+			app.Use(New(Config{Storage: storageOf(kind), Expiration: time.Hour}))
+			app.Get("/", func(c fiber.Ctx) error {
+				// Deleted before the others are added, as Del moves the last line into its place.
+				c.Response().Header.Del(fiber.HeaderXFrameOptions)
+				for name, lines := range kept {
+					for _, line := range lines {
+						c.Response().Header.Add(name, line)
+					}
+				}
+				c.Set(fiber.HeaderAccessControlAllowOrigin, "https://app.example")
+				c.Set("X-Request-Id", "first")
+				return c.SendString("page")
+			})
+
+			for _, want := range []string{cacheMiss, cacheHit} {
+				resp := cacheTestAExpect(t, app, "/", want)
+				for name, lines := range kept {
+					require.Equal(t, lines, resp.Header.Values(name), "%s on a %s", name, want)
+				}
+			}
+			hit := cacheTestAExpect(t, app, "/", cacheHit)
+			require.Empty(t, hit.Header.Values(fiber.HeaderAccessControlAllowOrigin))
+			require.Empty(t, hit.Header.Values("X-Request-Id"))
+		})
+	}
+}
+
+func Test_Cache_Security_HitKeepsWhatFiberSetsToRestrictTheBody(t *testing.T) {
+	t.Parallel()
+	upload := filepath.Join(t.TempDir(), "upload.html")
+	require.NoError(t, os.WriteFile(upload, []byte("<script>alert(document.domain)</script>"), 0o600))
+
+	app := fiber.New()
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/download", func(c fiber.Ctx) error { return c.Download(upload, "upload.html") })
+	app.Get("/page", helmet.New(), func(c fiber.Ctx) error { return c.SendString("page") })
+
+	miss := cacheTestAExpect(t, app, "/download", cacheMiss)
+	require.Equal(t, `attachment; filename="upload.html"`, miss.Header.Get(fiber.HeaderContentDisposition))
+	hit := cacheTestAExpect(t, app, "/download", cacheHit)
+	require.Equal(t, miss.Header.Get(fiber.HeaderContentDisposition), hit.Header.Get(fiber.HeaderContentDisposition))
+
+	miss = cacheTestAExpect(t, app, "/page", cacheMiss)
+	hit = cacheTestAExpect(t, app, "/page", cacheHit)
+	set := 0
+	for name, lines := range miss.Header {
+		if isKeptHeader([]byte(name)) {
+			set++
+			require.Equal(t, lines, hit.Header.Values(name), name)
+		}
+	}
+	require.Greater(t, set, 5, "helmet sets a field for most of its protections")
+}
+
+// Stored lines replace those set in front of the cache, past the 64 a hit marks without allocating too.
+func Test_Cache_Security_HitReplacesTheLinesSetInFrontOfTheCache(t *testing.T) {
+	t.Parallel()
+	robots := make([]string, 70)
+	for i := range robots {
+		robots[i] = "r" + strconv.Itoa(i)
+	}
+	links := []string{"</first.css>; rel=preload; as=style", "</second.js>; rel=preload; as=script"}
+	for _, tc := range []struct {
+		route fiber.Handler
+		want  map[string][]string // on the miss and on the hit
+		name  string
+		outer [][2]string     // the lines the middleware in front of the cache adds
+		front []fiber.Handler // registered ahead of that middleware
+	}{
+		{
+			name:  "the order of lines only the middleware sets, behind helmet",
+			front: []fiber.Handler{helmet.New()},
+			outer: [][2]string{{fiber.HeaderLink, links[0]}, {fiber.HeaderLink, links[1]}},
+			route: func(c fiber.Ctx) error { return c.SendString("page") },
+			want:  map[string][]string{fiber.HeaderLink: links},
+		},
+		{
+			name:  "a second line of the field",
+			outer: [][2]string{{fiber.HeaderXRobotsTag, "a"}},
+			route: func(c fiber.Ctx) error {
+				c.Response().Header.Add(fiber.HeaderXRobotsTag, "b")
+				return c.SendString("page")
+			},
+			want: map[string][]string{fiber.HeaderXRobotsTag: {"a", "b"}},
+		},
+		{
+			name:  "past 64 stored lines",
+			outer: [][2]string{{fiber.HeaderContentSecurityPolicy, "outer"}},
+			route: func(c fiber.Ctx) error {
+				c.Response().Header.Del(fiber.HeaderContentSecurityPolicy)
+				for _, line := range robots {
+					c.Response().Header.Add(fiber.HeaderXRobotsTag, line)
+				}
+				c.Response().Header.Add(fiber.HeaderContentSecurityPolicy, "inner")
+				return c.SendString("page")
+			},
+			want: map[string][]string{fiber.HeaderContentSecurityPolicy: {"inner"}, fiber.HeaderXRobotsTag: robots},
+		},
+		{
+			name:  "two lines of the field the handler replaces with one",
+			outer: [][2]string{{fiber.HeaderXRobotsTag, "outer1"}, {fiber.HeaderXRobotsTag, "outer2"}},
+			route: func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderXRobotsTag, "inner")
+				return c.SendString("page")
+			},
+			want: map[string][]string{fiber.HeaderXRobotsTag: {"inner"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			for _, h := range tc.front {
+				app.Use(h)
+			}
+			app.Use(func(c fiber.Ctx) error {
+				for _, line := range tc.outer {
+					c.Response().Header.Add(line[0], line[1])
+				}
+				return c.Next()
+			})
+			app.Use(New(Config{Expiration: time.Hour}))
+			app.Get("/", tc.route)
+
+			for _, want := range []string{cacheMiss, cacheHit} {
+				resp := cacheTestAExpect(t, app, "/", want)
+				for name, lines := range tc.want {
+					require.Equal(t, lines, resp.Header.Values(name), "%s on a %s", name, want)
+				}
+			}
+		})
+	}
+}
+
+func Test_isKeptHeader(t *testing.T) {
+	t.Parallel()
+	for name := range keptHeaders {
+		require.LessOrEqual(t, len(name), maxKeptHeaderLen, name)
+		for _, spelled := range []string{name, strings.ToLower(name), strings.ToUpper(name)} {
+			require.True(t, isKeptHeader([]byte(spelled)), spelled)
+		}
+	}
+	for _, name := range []string{"", "X-Request-Id", fiber.HeaderLocation, fiber.HeaderSetCookie, fiber.HeaderAccessControlAllowOrigin, strings.Repeat("a", maxKeptHeaderLen+1)} {
+		require.False(t, isKeptHeader([]byte(name)), name)
+	}
+}
+
 // Concurrent requests whose query has more parameters than the key spells out.
 func Test_Cache_Security_Concurrent_QueryParamDoS(t *testing.T) {
 	t.Parallel()
@@ -265,11 +800,8 @@ func Test_Cache_Security_MultiDimensionInjection(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		got := getRoot(t, app, map[string]string{
-			"X-Header-1": tc.header1,
-			"X-Header-2": tc.header2,
-			"Cookie":     fmt.Sprintf("cookie1=%s; cookie2=%s", tc.cookie1, tc.cookie2),
-		})
+		got := cacheTestCGet(t, app, "/", "X-Header-1", tc.header1, "X-Header-2", tc.header2,
+			"Cookie", fmt.Sprintf("cookie1=%s; cookie2=%s", tc.cookie1, tc.cookie2))
 		require.Equal(t, fiber.StatusOK, got.status, "Test case %d failed", i)
 		require.Equal(t, tc.expected, got.body, "Test case %d failed", i)
 	}
@@ -460,7 +992,7 @@ func Test_Cache_Security_DelimiterCollisionPrevention(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		got := getRoot(t, app, map[string]string{"X-Header": tc.header, "Cookie": "session=" + tc.cookie})
+		got := cacheTestCGet(t, app, "/", "X-Header", tc.header, "Cookie", "session="+tc.cookie)
 		require.Equal(t, fiber.StatusOK, got.status, "Test case %d failed", i)
 		require.Equal(t, fmt.Sprintf("h=%s,c=%s", tc.header, tc.cookie), got.body, "Test case %d failed", i)
 	}
@@ -696,10 +1228,25 @@ func Test_Cache_Security_QueryBody_StreamedBodyLimit(t *testing.T) {
 
 	cacheTestCRequireReply(t, doQuery("small", true), cacheUnreachable, "s5 streamed=true",
 		"a chunked body has no length to bound")
+	// only-if-cached forbids the handler for a body the key cannot hold too.
+	onlyIfCached := cacheTestQuery("small")
+	onlyIfCached.TransferEncoding = []string{"chunked"}
+	onlyIfCached.Header.Set(fiber.HeaderCacheControl, "only-if-cached")
+	cacheTestAExpectStatus(t, app, onlyIfCached, cacheUnreachable, fiber.StatusGatewayTimeout)
 	for _, want := range []string{cacheMiss, cacheHit} {
 		cacheTestCRequireReply(t, doQuery("small", false), want, "s5 streamed=false")
 	}
 	require.Equal(t, cacheMiss, doQuery("other", false).cache)
+}
+
+func Test_Cache_EmptyBodyStreamIsLeftToTheHandler(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{StreamRequestBody: true})
+	app.Use(New(Config{Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(strconv.FormatBool(c.Request().BodyStream() != nil)) })
+
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderContentLength, "0"))
+	apptest.ExpectBody(t, app, req, fiber.StatusOK, "true")
 }
 
 // countingReader yields zeros and counts how many were read.
@@ -869,27 +1416,76 @@ func Test_AuthorizationHash_CoversEveryFieldLine(t *testing.T) {
 		"principals differing only on a later field line must not share a partition")
 }
 
-// Test_StoreResponseHeaders_DropsTrailer pins the hop-by-hop header's real
-// name. The list said "Trailers", which is not a header, so the actual Trailer
-// field was stored and replayed — announcing to every later client a trailer
-// that only the connection it came from ever sent.
-func Test_StoreResponseHeaders_DropsTrailer(t *testing.T) {
+// Trailer, Connection-named, Proxy-Connection and Proxy-Authentication-Info fields are not stored (RFC 9110 §7.6.1).
+func Test_StoreResponseHeaders_DropsConnectionAndProxyFields(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{Expiration: time.Hour, StoreResponseHeaders: true}))
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Response().Header.Set("Trailer", "Expires")
-		c.Response().Header.Set("X-Keep", "kept")
-		return c.SendString("hi")
-	})
+	sent := map[string]string{"X-Hop": "hop", "X-Other": "other", "X-Keep": "kept"}
+	for _, tc := range []struct {
+		name, connection, trailer string
+		dropped, kept             []string
+	}{
+		{name: "none named", kept: []string{"X-Hop", "X-Other", "X-Keep"}},
+		{name: "one named", connection: "X-Hop", dropped: []string{"X-Hop"}, kept: []string{"X-Other", "X-Keep"}},
+		{name: "two named in another case", connection: "x-hop, X-OTHER", dropped: []string{"X-Hop", "X-Other"}, kept: []string{"X-Keep"}},
+		{name: "named beside an option", connection: "keep-alive, X-Other", dropped: []string{"X-Other"}, kept: []string{"X-Hop", "X-Keep"}},
+		{name: "a Trailer field", trailer: "Expires", kept: []string{"X-Hop", "X-Other", "X-Keep"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Hour, StoreResponseHeaders: true}))
+			app.Get("/", func(c fiber.Ctx) error {
+				if tc.connection != "" {
+					c.Response().Header.Set(fiber.HeaderConnection, tc.connection)
+				}
+				if tc.trailer != "" {
+					c.Response().Header.Set(fiber.HeaderTrailer, tc.trailer)
+				}
+				for name, value := range sent {
+					c.Set(name, value)
+				}
+				c.Set("Proxy-Authentication-Info", `nextnonce="abc"`)
+				c.Set("Proxy-Connection", "keep-alive")
+				return c.SendString("hi")
+			})
 
-	cacheTestAExpect(t, app, "/", cacheMiss)
+			miss := cacheTestAExpect(t, app, "/", cacheMiss)
+			resp := cacheTestAExpect(t, app, "/", cacheHit)
+			require.Equal(t, tc.trailer != "", len(miss.Trailer) > 0, "the client reads a Trailer field into Trailer")
+			require.Empty(t, resp.Trailer)
+			require.Empty(t, resp.Header.Values("Proxy-Authentication-Info"))
+			require.Empty(t, resp.Header.Values("Proxy-Connection"))
+			for _, name := range tc.dropped {
+				require.Empty(t, resp.Header.Values(name), name)
+			}
+			for _, name := range tc.kept {
+				require.Equal(t, []string{sent[name]}, resp.Header.Values(name), name)
+			}
+		})
+	}
+}
 
-	resp := cacheTestAExpect(t, app, "/", cacheHit)
-	require.Empty(t, resp.Header.Values("Trailer"))
-	// A stored header that is not hop-by-hop still comes back, so the assertion
-	// above is about Trailer and not about header storage being off.
-	require.Equal(t, "kept", resp.Header.Get("X-Keep"))
+// A field the entry keeps apart from its other headers labels the body or decided its lifetime, so a response whose
+// Connection names one is not stored rather than replayed without it (RFC 9110 §7.6.1).
+func Test_Cache_ConnectionNamingAFieldTheEntryKeepsIsNotStored(t *testing.T) {
+	t.Parallel()
+	for _, connection := range []string{
+		fiber.HeaderCacheControl, "keep-alive, content-encoding", fiber.HeaderContentType,
+		fiber.HeaderETag, fiber.HeaderExpires, fiber.HeaderVary,
+	} {
+		t.Run(connection, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(Config{Expiration: time.Hour}))
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Response().Header.Set(fiber.HeaderConnection, connection)
+				return c.SendString("hi")
+			})
+
+			cacheTestAExpect(t, app, "/", cacheUnreachable)
+			cacheTestAExpect(t, app, "/", cacheUnreachable)
+		})
+	}
 }
 
 // Test_SetCookie2ResponseIsNotStored covers the obsolete RFC 2965 spelling.
@@ -931,7 +1527,8 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 		t.Run(spelling, func(t *testing.T) {
 			t.Parallel()
 			var calls atomic.Int32
-			app := fiber.New()
+			// Kept as sent, as a form fasthttp parses passes the cache by.
+			app := fiber.New(fiber.Config{DisablePreParseMultipartForm: true})
 			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
 			app.Post("/", func(c fiber.Ctx) error {
 				calls.Add(1)
@@ -955,58 +1552,100 @@ func Test_VaryContentType_KeyIsStableAcrossTheFormFold(t *testing.T) {
 	}
 }
 
-// Test_Vary_PartitionsWithoutHeaderNormalizing asserts a Vary'd dimension keys
-// the same whether or not fasthttp normalizes header names.
-//
-// PeekAll compares stored keys byte for byte. With DisableHeaderNormalizing the
-// store keeps the spelling the client sent, while the names reaching the key
-// come lower-cased from parseVary — so every lookup missed and the dimension
-// dropped out of the key silently. A request sending application/json was then
-// served the entry stored for a form.
-func Test_Vary_PartitionsWithoutHeaderNormalizing(t *testing.T) {
+func Test_Cache_PreParsedMultipartPassesTheCacheBy(t *testing.T) {
 	t.Parallel()
-	for _, disable := range []bool{false, true} {
-		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%v", disable), func(t *testing.T) {
+	parts := make([]string, 0, 21)
+	for i := range 20 {
+		parts = append(parts, "--XBOUNDARYX\r\nContent-Disposition: form-data; name=\"f"+strconv.Itoa(i)+"\"\r\n\r\nv\r\n")
+	}
+	body := strings.Join(append(parts, "--XBOUNDARYX--\r\n"), "")
+	for _, tc := range []struct {
+		name   string
+		method string
+		server fiber.Config
+		want   [2]string // the X-Cache of two identical requests
+		next   bool      // Next skips the middleware, so only-if-cached reaches the handler
+	}{
+		{name: "GET", method: fiber.MethodGet, want: [2]string{cacheUnreachable, cacheUnreachable}},
+		{name: "skipped by Next", method: fiber.MethodGet, next: true, want: [2]string{cacheUnreachable, cacheUnreachable}},
+		{name: "POST", method: fiber.MethodPost, want: [2]string{cacheUnreachable, cacheUnreachable}},
+		{name: "kept as sent", method: fiber.MethodPost, server: fiber.Config{DisablePreParseMultipartForm: true}, want: [2]string{cacheMiss, cacheHit}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
-			app.Use(New(Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodPost}}))
-			app.Post("/", func(c fiber.Ctx) error {
-				c.Response().Header.Set(fiber.HeaderVary, fiber.HeaderContentType)
-				return c.SendString("body-for:" + c.Get(fiber.HeaderContentType))
-			})
-
-			do := func(ct string) reply {
-				req := httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a=1"))
-				req.Header.Set(fiber.HeaderContentType, ct)
-				return doRequest(t, app, req)
+			app := fiber.New(tc.server)
+			cfg := Config{Expiration: time.Hour, Methods: []string{fiber.MethodGet, fiber.MethodHead, fiber.MethodPost}}
+			if tc.next {
+				cfg.Next = func(fiber.Ctx) bool { return true }
 			}
-
-			cacheTestCRequireReply(t, do("application/x-www-form-urlencoded"), cacheMiss, "body-for:application/x-www-form-urlencoded")
-			cacheTestCRequireReply(t, do("application/json"), cacheMiss, "body-for:application/json",
-				"a different Content-Type must not hit the form entry")
-			cacheTestCRequireReply(t, do("application/json"), cacheHit, "body-for:application/json")
+			app.Use(New(cfg))
+			var calls atomic.Int32
+			app.All("/", func(c fiber.Ctx) error { calls.Add(1); return c.SendString("form") })
+			send := func(cacheControl string) *http.Request {
+				req := httptest.NewRequest(tc.method, "/", strings.NewReader(body))
+				req.Header.Set(fiber.HeaderContentType, "multipart/form-data; boundary=XBOUNDARYX")
+				if cacheControl != "" {
+					req.Header.Set(fiber.HeaderCacheControl, cacheControl)
+				}
+				return req
+			}
+			for _, want := range tc.want {
+				cacheTestAExpect(t, app, send(""), want)
+			}
+			handled := calls.Load()
+			if tc.next {
+				cacheTestAExpectStatus(t, app, send("only-if-cached"), cacheUnreachable, fiber.StatusOK)
+				require.Equal(t, handled+1, calls.Load(), "a request Next skips must reach the handler")
+				return
+			}
+			if tc.want[1] == cacheHit {
+				cacheTestAExpectStatus(t, app, send("only-if-cached"), cacheHit, fiber.StatusOK)
+			} else {
+				cacheTestAExpectStatus(t, app, send("only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
+			}
+			require.Equal(t, handled, calls.Load(), "only-if-cached must not reach the handler")
 		})
 	}
 }
 
-// Test_KeyHeaders_PartitionWithoutHeaderNormalizing is the same property for a
-// dimension named by KeyHeaders rather than by the response's Vary.
-func Test_KeyHeaders_PartitionWithoutHeaderNormalizing(t *testing.T) {
+// A key dimension named by the response's Vary or by KeyHeaders partitions whatever case header names keep.
+func Test_PartitionsWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-	for _, disable := range []bool{false, true} {
-		t.Run(fmt.Sprintf("DisableHeaderNormalizing=%v", disable), func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
-			app.Use(New(Config{Expiration: time.Hour, KeyHeaders: []string{"X-Tenant"}}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("body-for:" + c.Get("X-Tenant")) })
+	for _, tc := range []struct {
+		send               func(value string) *http.Request
+		values             [2]string
+		name, header, vary string // header is the dimension the body echoes; vary the response's Vary
+		cfg                Config
+	}{
+		// A header the key does not hold, so that only the Vary tells the two apart.
+		{
+			name: "Vary", cfg: Config{Expiration: time.Hour}, header: "X-Tenant", vary: "X-Tenant", values: [2]string{"acme", "beta"},
+			send: func(tenant string) *http.Request { return cacheTestCReq("/", "X-Tenant", tenant) },
+		},
+		{
+			name: "KeyHeaders", cfg: Config{Expiration: time.Hour, KeyHeaders: []string{"X-Tenant"}}, header: "X-Tenant", values: [2]string{"acme", "beta"},
+			send: func(tenant string) *http.Request { return cacheTestCReq("/", "X-Tenant", tenant) },
+		},
+	} {
+		for _, disable := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/DisableHeaderNormalizing=%v", tc.name, disable), func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New(fiber.Config{DisableHeaderNormalizing: disable})
+				app.Use(New(tc.cfg))
+				app.All("/", func(c fiber.Ctx) error {
+					if tc.vary != "" {
+						c.Response().Header.Set(fiber.HeaderVary, tc.vary)
+					}
+					return c.SendString("body-for:" + c.Get(tc.header))
+				})
+				do := func(value string) reply { return doRequest(t, app, tc.send(value)) }
 
-			do := func(tenant string) reply { return cacheTestCGet(t, app, "/", "X-Tenant", tenant) }
-
-			cacheTestCRequireReply(t, do("acme"), cacheMiss, "body-for:acme")
-			cacheTestCRequireReply(t, do("beta"), cacheMiss, "body-for:beta",
-				"a different tenant must not hit the first one's entry")
-			cacheTestCRequireReply(t, do("acme"), cacheHit, "body-for:acme")
-		})
+				cacheTestCRequireReply(t, do(tc.values[0]), cacheMiss, "body-for:"+tc.values[0])
+				cacheTestCRequireReply(t, do(tc.values[1]), cacheMiss, "body-for:"+tc.values[1], "another value must not hit the first one's entry")
+				cacheTestCRequireReply(t, do(tc.values[1]), cacheHit, "body-for:"+tc.values[1])
+				cacheTestCRequireReply(t, do(tc.values[0]), cacheHit, "body-for:"+tc.values[0])
+			})
+		}
 	}
 }
 
@@ -1025,6 +1664,10 @@ func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
 		c.Set("X-Extra", "not-stored")
 		return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
 	})
+	app.Get("/hop", func(c fiber.Ctx) error {
+		c.Response().Header.Set(fiber.HeaderConnection, fiber.HeaderLocation)
+		return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
+	})
 
 	resp := cacheTestAExpect(t, app, "/old", cacheMiss)
 	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
@@ -1036,31 +1679,36 @@ func Test_CachedRedirectKeepsItsLocation(t *testing.T) {
 	// Only the destination is kept, not response headers at large — that is
 	// still what StoreResponseHeaders is for.
 	require.Empty(t, resp.Header.Get("X-Extra"))
+
+	// A Location the response names in Connection is hop-by-hop (RFC 9110 Section 7.6.1), so it is not kept.
+	cacheTestAExpect(t, app, "/hop", cacheMiss)
+	require.Empty(t, cacheTestAExpect(t, app, "/hop", cacheHit).Header.Values(fiber.HeaderLocation))
 }
 
-// Test_Authorization_DetectedWithoutHeaderNormalizing asserts a credential is
-// seen whatever case its field name arrived in.
-//
-// hasAuthorization and the auth hash read the header by its canonical name,
-// which fasthttp answers only while it normalizes what it stored. With
-// DisableHeaderNormalizing an "authorization:" sent in lower case matched
-// nothing, so the request read as anonymous: its response was stored in the
-// anonymous partition and replayed to the next client that asked, bearer token
-// and all.
+// With DisableHeaderNormalizing a credential under another spelling, even beside an empty canonical line, is seen.
 func Test_Authorization_DetectedWithoutHeaderNormalizing(t *testing.T) {
 	t.Parallel()
-	wire := cacheTestCExactWire(t, func(c fiber.Ctx) error {
-		// With normalizing off a handler reads the name as it arrived.
-		if tok := c.Get("authorization"); tok != "" {
-			return c.SendString("PRIVATE for " + tok)
-		}
-		return c.SendString("PUBLIC")
-	})
+	for _, tc := range []struct {
+		name, token string
+		lines       []string
+	}{
+		{name: "in lower case", lines: []string{"authorization: Bearer alice-secret"}, token: "Bearer alice-secret"},
+		{name: "beside an empty canonical line", lines: []string{"Authorization:", "authorization: Bearer alice"}, token: "Bearer alice"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			wire := cacheTestCExactWire(t, func(c fiber.Ctx) error {
+				if tok := cmp.Or(c.Get("Authorization"), c.Get("authorization")); tok != "" {
+					return c.SendString("PRIVATE for " + tok)
+				}
+				return c.SendString("PUBLIC")
+			})
 
-	cacheTestCRequireReply(t, wire.get("authorization: Bearer alice-secret"), cacheUnreachable, "PRIVATE for Bearer alice-secret",
-		"an authorized response must not enter the shared store")
-	cacheTestCRequireReply(t, wire.get(), cacheMiss, "PUBLIC", "an anonymous request must not be served the authorized response")
-	cacheTestCRequireReply(t, wire.get(), cacheHit, "PUBLIC")
+			cacheTestCRequireReply(t, wire.get(tc.lines...), cacheUnreachable, "PRIVATE for "+tc.token, "an authorized response must not enter the shared store")
+			cacheTestCRequireReply(t, wire.get(), cacheMiss, "PUBLIC", "an anonymous request must not be served the authorized response")
+			cacheTestCRequireReply(t, wire.get(), cacheHit, "PUBLIC")
+		})
+	}
 }
 
 // Test_RequestDirectives_HonoredWithoutHeaderNormalizing covers the same
@@ -1074,35 +1722,6 @@ func Test_RequestDirectives_HonoredWithoutHeaderNormalizing(t *testing.T) {
 	require.Equal(t, cacheHit, wire.get().cache)
 	require.Empty(t, wire.get("cache-control: no-store").cache, "no-store must be honored whatever case it arrived in")
 	require.Equal(t, cacheMiss, wire.get("cache-control: no-cache").cache, "no-cache must force revalidation")
-}
-
-// Test_Authorization_MixedCaseFieldLines closes the other half of the
-// case-insensitive lookup.
-//
-// Falling back to a case-insensitive walk only when the byte-for-byte lookup
-// came back empty was not enough: with DisableHeaderNormalizing a request can
-// send both spellings, and an empty canonical "Authorization:" line satisfies
-// the fast path, so the credential on the lowercase line beside it was never
-// looked at. The request read as anonymous and its private response was stored
-// in the anonymous partition.
-func Test_Authorization_MixedCaseFieldLines(t *testing.T) {
-	t.Parallel()
-	wire := cacheTestCExactWire(t, func(c fiber.Ctx) error {
-		tok := c.Get("Authorization")
-		if tok == "" {
-			tok = c.Get("authorization")
-		}
-		if tok == "" {
-			return c.SendString("PUBLIC")
-		}
-		return c.SendString("PRIVATE for " + tok)
-	})
-
-	// The canonical line is present but empty, so the byte-for-byte lookup
-	// succeeds and would have stopped there.
-	cacheTestCRequireReply(t, wire.get("Authorization:", "authorization: Bearer alice"), cacheUnreachable, "PRIVATE for Bearer alice",
-		"the credential on the second spelling must still be seen")
-	cacheTestCRequireReply(t, wire.get(), cacheMiss, "PUBLIC", "an anonymous request must not be served the authorized response")
 }
 
 // Test_Cache_NonCanonicalResponseNamesAreNotDuplicated checks that the fields
@@ -2120,6 +2739,8 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
 			app.Use(New())
+			// Marks the response of a request the chain past the cache ran for, a replayed one included.
+			app.Use(func(c fiber.Ctx) error { c.Set("X-Chain", "ran"); return c.Next() })
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("home page") })
 			if tc.catchAll {
 				app.Use(func(c fiber.Ctx) error { return c.Status(fiber.StatusNotFound).SendString("no such page") })
@@ -2127,28 +2748,36 @@ func Test_Cache_Security_RefusedRequestIsNotStored(t *testing.T) {
 
 			ln := apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true})
 
-			// send writes GET target and the header lines extra, ended by their blank line, and reads the answer.
-			send := func(target, extra string) reply {
+			// send writes method target and the header lines extra, ended by their blank line, and reads the answer.
+			send := func(method, target, extra string) reply {
 				conn := apptest.Dial(t, ln)
 				const lines = " HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n"
-				_, err := conn.Write([]byte("GET " + target + lines + extra))
+				_, err := conn.Write([]byte(method + " " + target + lines + extra))
 				require.NoError(t, err)
 				resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 				require.NoError(t, err)
-				return reply{status: resp.StatusCode, cache: resp.Header.Get("X-Cache"), body: apptest.Body(t, resp)}
+				return reply{status: resp.StatusCode, cache: resp.Header.Get("X-Cache"), body: apptest.Body(t, resp), header: resp.Header}
 			}
 
 			// "/" holds a fresh entry the refused request asks to replace, "/?page=2" none yet.
-			require.Equal(t, fiber.StatusOK, send("/", "\r\n").status)
+			require.Equal(t, fiber.StatusOK, send(fiber.MethodGet, "/", "\r\n").status)
 
 			for _, target := range []string{"/", "/?page=2"} {
-				refused := send(target, "Cache-Control: no-cache\r\n"+tc.refused)
+				refused := send(fiber.MethodGet, target, "Cache-Control: no-cache\r\n"+tc.refused)
 				require.GreaterOrEqual(t, refused.status, fiber.StatusBadRequest, target)
 				require.Equal(t, cacheUnreachable, refused.cache, target)
 
-				retry := send(target, "\r\n")
+				retry := send(fiber.MethodGet, target, "\r\n")
 				require.Equal(t, fiber.StatusOK, retry.status, target)
 				require.Equal(t, "home page", retry.body, target)
+
+				// only-if-cached leaves a refused request to the error handler too, a method not cached included.
+				for _, method := range []string{fiber.MethodGet, fiber.MethodPut} {
+					refused = send(method, target, "Cache-Control: only-if-cached\r\n"+tc.refused)
+					require.GreaterOrEqual(t, refused.status, fiber.StatusBadRequest, method+" "+target)
+					require.NotEqual(t, fiber.StatusGatewayTimeout, refused.status, method+" "+target)
+					require.Equal(t, "ran", refused.header.Get("X-Chain"), "%s %s: the chain past the cache did not run", method, target)
+				}
 			}
 		})
 	}

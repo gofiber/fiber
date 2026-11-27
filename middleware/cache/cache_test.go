@@ -12,12 +12,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"math"
 	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -31,6 +31,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/clocktest"
+	"github.com/gofiber/fiber/v3/internal/loggertest"
 	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
@@ -76,17 +77,6 @@ func doRequest(t *testing.T, app *fiber.App, req *http.Request) reply {
 	return reply{status: resp.StatusCode, header: resp.Header, cache: resp.Header.Get("X-Cache"), body: body}
 }
 
-// getRoot sends GET / with the headers.
-func getRoot(t *testing.T, app *fiber.App, headers map[string]string) reply {
-	t.Helper()
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
-	for name, value := range headers {
-		req.Header.Set(name, value)
-	}
-	return doRequest(t, app, req)
-}
-
 func newMutatingStorage(mutate func(key string, value []byte) []byte) *mutatingStorage {
 	return &mutatingStorage{Memory: storagetest.New(), mutate: mutate}
 }
@@ -116,73 +106,37 @@ func bodyKeys(storage *storagetest.Memory) []string {
 	return slices.DeleteFunc(storage.Keys(), func(key string) bool { return !strings.HasPrefix(key, bodyKeyPrefix) })
 }
 
-// blockingDeleteStorage pauses the first stale metadata deletion while another
-// request replaces that entry and reuses its heap index.
-type blockingDeleteStorage struct {
-	*storagetest.Memory
-	deleteStarted  chan struct{}
-	continueDelete chan struct{}
-	key            string
-	blockOnce      atomic.Bool
+// cacheTestGate parks the first call of park once armed: it closes entered and waits for release.
+type cacheTestGate struct {
+	entered, release chan struct{}
+	armed            atomic.Bool
 }
 
-func (s *blockingDeleteStorage) DeleteWithContext(ctx context.Context, key string) error {
-	if key == s.key && s.blockOnce.CompareAndSwap(false, true) {
-		close(s.deleteStarted)
-		<-s.continueDelete
+// newCacheTestGate returns a gate armed now, or later with g.armed.Store(true).
+func newCacheTestGate(armed bool) *cacheTestGate {
+	g := &cacheTestGate{entered: make(chan struct{}), release: make(chan struct{})}
+	g.armed.Store(armed)
+	return g
+}
+
+// park reports whether it disarmed the gate, which it does once, closing entered and waiting for release.
+func (g *cacheTestGate) park() bool {
+	if !g.armed.CompareAndSwap(true, false) {
+		return false
 	}
-	return s.Memory.DeleteWithContext(ctx, key)
+	close(g.entered)
+	<-g.release
+	return true
 }
 
-// restoreMutationStorage models a backend change while eviction has dropped
-// the old heap node and its storage deletion fails.
-type restoreMutationStorage struct {
-	*storagetest.Memory
-	key      string
-	mutation string
-	armed    atomic.Bool
-}
-
-type blockingFailedEvictionStorage struct {
-	*storagetest.Memory
-	started        chan struct{}
-	continueDelete chan struct{}
-	key            string
-	armed          atomic.Bool
-}
-
-func (s *blockingFailedEvictionStorage) DeleteWithContext(ctx context.Context, key string) error {
-	if key == s.key && s.armed.CompareAndSwap(true, false) {
-		close(s.started)
-		<-s.continueDelete
-		return errors.New("eviction delete failed")
-	}
-	return s.Memory.DeleteWithContext(ctx, key)
-}
-
-func (s *restoreMutationStorage) DeleteWithContext(ctx context.Context, key string) error {
-	if key != s.key || !s.armed.CompareAndSwap(true, false) {
-		return s.Memory.DeleteWithContext(ctx, key)
-	}
-
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-	if s.mutation == "missing" {
-		delete(s.Data, key)
-		delete(s.Data, bodyKey(key))
-	} else {
-		var entry item
-		if _, err := entry.UnmarshalMsg(s.Data[key]); err != nil {
+// cacheTestParkedDelete is a storage whose delete of key parks on gate, then fails with err, or deletes when nil.
+func cacheTestParkedDelete(key string, gate *cacheTestGate, err error) *hookedStorage {
+	return &hookedStorage{Memory: storagetest.New(), onDelete: func(k string) error {
+		if k == key && gate.park() {
 			return err
 		}
-		entry.heapgen += 1000
-		raw, err := entry.MarshalMsg(nil)
-		if err != nil {
-			return err
-		}
-		s.Data[key] = raw
-	}
-	return errors.New("eviction delete failed")
+		return nil
+	}}
 }
 
 // cacheTestAFailures keeps the last error that failed a request of the app it serves.
@@ -198,46 +152,229 @@ func (f *cacheTestAFailures) app() *fiber.App {
 	})
 }
 
+// A failing Storage does not fail the request: the handler answers it, and X-Cache says so.
 func TestCacheStorageErrors(t *testing.T) {
 	t.Parallel()
 	key := defaultKey("/")
+	unstored := [2]string{cacheUnreachable, cacheUnreachable}
+	// Use an obviously expired timestamp without relying on time-based conversions
+	expired, err := (&item{exp: 1}).MarshalMsg(nil)
+	require.NoError(t, err)
 
 	for _, tc := range []struct {
-		name    string
-		op      string // the failing storage operation
-		key     string // the key it fails on
-		wantErr string
-		expired bool // the storage already holds an expired entry for the request
+		name   string
+		op     string    // the failing storage operation, if one does
+		key    string    // the key it fails on
+		want   [2]string // X-Cache of two requests in a row
+		stored []byte    // what the storage already holds for the request
 	}{
-		{name: "get", op: storagetest.OpGet, key: key, wantErr: "cache: failed to get key"},
-		{name: "set", op: storagetest.OpSet, key: bodyKey(key), wantErr: "cache: failed to store raw key"},
-		{
-			name: "delete", op: storagetest.OpDelete, key: key,
-			wantErr: "cache: failed to delete expired key", expired: true,
-		},
+		{name: "get", op: storagetest.OpGet, key: key, want: unstored},
+		{name: "get of the Vary manifest", op: storagetest.OpGet, key: manifestKeyPrefix + key, want: unstored},
+		// 0xc1 is never valid MessagePack: a miss, which the handler's answer replaces.
+		{name: "entry that cannot be decoded", stored: []byte{0xc1}, want: [2]string{cacheMiss, cacheHit}},
+		{name: "set of the body", op: storagetest.OpSet, key: bodyKey(key), want: unstored},
+		{name: "set of the entry", op: storagetest.OpSet, key: key, want: unstored},
+		{name: "delete", op: storagetest.OpDelete, key: key, stored: expired, want: [2]string{cacheMiss, cacheHit}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			storage := storagetest.New()
-			storage.SetErr(tc.op, tc.key, errors.New("boom"))
-
-			if tc.expired {
-				// Use an obviously expired timestamp without relying on time-based conversions
-				raw, err := (&item{exp: 1}).MarshalMsg(nil)
-				require.NoError(t, err)
-				storage.Data[key] = raw
+			if tc.op != "" {
+				storage.SetErr(tc.op, tc.key, errors.New("boom"))
+			}
+			if tc.stored != nil {
+				storage.Data[key] = tc.stored
 			}
 
 			var failures cacheTestAFailures
 			app := failures.app()
 			app.Use(New(Config{Storage: storage, Expiration: time.Second}))
-			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+			var calls atomic.Int32
+			app.Get("/", func(c fiber.Ctx) error { calls.Add(1); return c.SendString("ok") })
 
-			apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-			require.Error(t, failures.err)
-			require.ErrorContains(t, failures.err, tc.wantErr)
+			cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
+			require.Zero(t, calls.Load())
+
+			answered := int32(0)
+			for _, want := range tc.want {
+				cacheTestAExpectBody(t, app, "/", want, "ok")
+				if want != cacheHit {
+					answered++
+				}
+				require.Equal(t, answered, calls.Load())
+			}
+			require.NoError(t, failures.err)
 		})
 	}
+}
+
+func Test_Cache_StorageFailureOfADoneRequestRunsNoHandler(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		storage fiber.Storage
+		name    string
+		stored  bool
+	}{
+		{name: "lookup", storage: &storagetest.Memory{HonorContext: true}},
+		{
+			name: "body read", stored: true,
+			storage: storagetest.New().SetErr(storagetest.OpGet, bodyKey(defaultKey("/")), context.Canceled),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var failures cacheTestAFailures
+			app := failures.app()
+			app.Use(func(c fiber.Ctx) error {
+				if c.Get("X-Done") != "" {
+					ctx, cancel := context.WithCancel(c.Context())
+					cancel()
+					c.SetContext(ctx)
+				}
+				return c.Next()
+			})
+			app.Use(New(Config{Storage: tc.storage}))
+			var calls atomic.Int32
+			app.Get("/", func(c fiber.Ctx) error { calls.Add(1); return c.SendString("ok") })
+			if tc.stored {
+				cacheTestAExpectBody(t, app, "/", cacheMiss, "ok")
+			}
+			before := calls.Load()
+
+			done := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Done", "1"))
+			apptest.ExpectBody(t, app, done, fiber.StatusInternalServerError, "storage failure")
+			require.ErrorIs(t, failures.err, context.Canceled)
+			require.Equal(t, before, calls.Load())
+		})
+	}
+}
+
+// conventions:ignore parallel: the default logger is redirected to read what is logged
+func Test_Cache_StorageFailureIsLogged(t *testing.T) {
+	key := defaultKey("/")
+
+	for _, tc := range []struct {
+		name   string
+		fails  [][2]string // the failing storage operations, each with the key it fails on
+		stored []byte      // what the storage already holds for the request
+		want   []string
+		shown  bool // DisableValueRedaction
+	}{
+		{
+			name: "lookup", fails: [][2]string{{storagetest.OpGet, key}},
+			want: []string{`cache: failed to get key "[redacted]" from storage: boom; the request is answered without the cache`},
+		},
+		{
+			name: "lookup, keys shown", fails: [][2]string{{storagetest.OpGet, key}}, shown: true,
+			want: []string{fmt.Sprintf("cache: failed to get key %q from storage: boom", key)},
+		},
+		{
+			name: "entry that cannot be decoded", stored: []byte{0xc1},
+			want: []string{`cache: failed to unmarshal key "[redacted]"`, "; it is treated as a miss"},
+		},
+		{
+			name: "body write", fails: [][2]string{{storagetest.OpSet, bodyKey(key)}},
+			want: []string{`cache: failed to store raw key "[redacted]": boom`},
+		},
+		{
+			name:  "entry write, and the delete of the body written before it",
+			fails: [][2]string{{storagetest.OpSet, key}, {storagetest.OpDelete, bodyKey(key)}},
+			want: []string{
+				`cache: failed to store key "[redacted]": boom`,
+				`cache: failed to delete raw key "[redacted]" after store error`,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logged := loggertest.CaptureContextLog(t, "")
+			storage := storagetest.New()
+			for _, failing := range tc.fails {
+				storage.SetErr(failing[0], failing[1], errors.New("boom"))
+			}
+			if tc.stored != nil {
+				storage.Data[key] = tc.stored
+			}
+			app := fiber.New()
+			app.Use(New(Config{Storage: storage, Expiration: time.Hour, DisableValueRedaction: tc.shown}))
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+			apptest.ExpectBody(t, app, "/", fiber.StatusOK, "ok")
+			for _, want := range tc.want {
+				require.Contains(t, logged.String(), want)
+			}
+			if !tc.shown {
+				require.NotContains(t, logged.String(), key)
+			}
+		})
+	}
+}
+
+func Test_Cache_OnlyIfCachedEntryDropped(t *testing.T) {
+	t.Parallel()
+	key := defaultKey("/")
+	future := uint64(time.Now().Unix()) + 3600
+
+	for _, tc := range []struct {
+		entry *item
+		name  string
+	}{
+		{name: "expired", entry: &item{exp: 1}},
+		{name: "expired, held past its lifetime", entry: &item{exp: 1, ttl: 1}},
+		{name: "private", entry: &item{exp: future, private: true}},
+	} {
+		for _, deleteFails := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/deleteFails=%t", tc.name, deleteFails), func(t *testing.T) {
+				t.Parallel()
+				storage := storagetest.New()
+				raw, err := tc.entry.MarshalMsg(nil)
+				require.NoError(t, err)
+				storage.Data[key] = raw
+				storage.Data[bodyKey(key)] = []byte("stored")
+				if deleteFails {
+					storage.SetErr(storagetest.OpDelete, key, errors.New("boom"))
+				}
+				app, calls := cacheTestAOrigin(New(Config{Storage: storage, Expiration: time.Hour}), "response-")
+
+				cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
+				require.Zero(t, calls.Load(), "only-if-cached must not reach the handler")
+				require.Equal(t, deleteFails, storage.Holds(key), "the entry stays only when it cannot be deleted")
+			})
+		}
+	}
+}
+
+func Test_Cache_StaleVaryManifestThatCannotBeDeleted(t *testing.T) {
+	t.Parallel()
+	storage := storagetest.New()
+	manifest := manifestKeyPrefix + defaultKey("/")
+	var varies atomic.Bool
+	varies.Store(true)
+	var calls atomic.Int32
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
+	app.Get("/", func(c fiber.Ctx) error {
+		if varies.Load() {
+			c.Set(fiber.HeaderVary, "X-Variant")
+		}
+		return c.SendString("response-" + strconv.Itoa(int(calls.Add(1))))
+	})
+	plain := func() *http.Request { return apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Variant", "a")) }
+	reload := func() *http.Request {
+		return apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Variant", "a"), apptest.WithHeader(fiber.HeaderCacheControl, "max-age=0"))
+	}
+
+	cacheTestAExpectBody(t, app, plain(), cacheMiss, "response-1")
+	require.True(t, storage.Holds(manifest))
+
+	varies.Store(false)
+	storage.SetErr(storagetest.OpDelete, manifest, errors.New("boom"))
+	cacheTestAExpectBody(t, app, reload(), cacheUnreachable, "response-2")
+	cacheTestAExpectBody(t, app, plain(), cacheHit, "response-1")
+
+	storage.ClearErrs()
+	cacheTestAExpectBody(t, app, reload(), cacheMiss, "response-3")
+	require.False(t, storage.Holds(manifest))
+	cacheTestAExpectBody(t, app, plain(), cacheHit, "response-3")
 }
 
 func TestCacheEvictionPropagatesRequestContextToDelete(t *testing.T) {
@@ -297,9 +434,8 @@ func TestCacheCleanupPropagatesRequestContextToDelete(t *testing.T) {
 
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("payload") })
 
-	apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-	require.Error(t, failures.err)
-	require.ErrorContains(t, failures.err, "cache: failed to store key")
+	cacheTestAExpectBody(t, app, "/", cacheUnreachable, "payload")
+	require.NoError(t, failures.err)
 
 	records := storage.Calls(storagetest.OpDelete)
 	require.Len(t, records, 1)
@@ -414,16 +550,18 @@ func Test_Cache_Expired(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name       string
+		headers    []string // of the response, as name and value pairs
 		expiration time.Duration
 		wait       time.Duration
 		recached   bool // the answer to the request after the expired one is cached again
 	}{
 		{name: "expired entry is replaced", expiration: 2 * time.Second, wait: 3 * time.Second, recached: true},
-		{name: "nothing to cache", expiration: -(time.Second * 1), wait: 500 * time.Millisecond},
+		// A pass-through, which stores not even a response that gives a lifetime of its own.
+		{name: "nothing to cache", expiration: -(time.Second * 1), headers: []string{fiber.HeaderCacheControl, "public, max-age=3600"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app, _ := cacheTestAOrigin(New(Config{Expiration: tc.expiration}), "")
+			app, _ := cacheTestAOrigin(New(Config{Expiration: tc.expiration}), "", tc.headers...)
 
 			resp := apptest.Do(t, app, "/")
 			body := apptest.BodyBytes(t, resp)
@@ -740,21 +878,42 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 	}
 	acceptLanguage := func(c fiber.Ctx) string { return c.Get(fiber.HeaderAcceptLanguage) }
 
-	t.Run("distinct query values do not collide", func(t *testing.T) {
-		t.Parallel()
-		app := echoApp(New(), fiber.MethodGet, func(c fiber.Ctx) string { return string(c.Request().URI().QueryString()) })
-
-		apptest.ExpectBody(t, app, "/?id=1", fiber.StatusOK, "1:id=1")
-		apptest.ExpectBody(t, app, "/?id=2", fiber.StatusOK, "2:id=2")
-	})
-
-	t.Run("representation headers partition cache", func(t *testing.T) {
-		t.Parallel()
-		app := echoApp(New(), fiber.MethodGet, acceptLanguage)
-
-		apptest.ExpectBody(t, app, cacheTestAAcceptLanguage("en-US"), fiber.StatusOK, "1:en-US")
-		apptest.ExpectBody(t, app, cacheTestAAcceptLanguage("fr-FR"), fiber.StatusOK, "2:fr-FR")
-	})
+	for _, tc := range []struct {
+		mw            fiber.Handler
+		echo          func(c fiber.Ctx) string
+		first, second *http.Request
+		name, method  string
+		want          [2]string // the bodies of the two answers
+	}{
+		{
+			name: "distinct query values do not collide", mw: New(), echo: func(c fiber.Ctx) string { return string(c.Request().URI().QueryString()) },
+			first: apptest.Req(fiber.MethodGet, "/?id=1"), second: apptest.Req(fiber.MethodGet, "/?id=2"), want: [2]string{"1:id=1", "2:id=2"},
+		},
+		{
+			name: "representation headers partition cache", mw: New(), echo: acceptLanguage,
+			first: cacheTestAAcceptLanguage("en-US"), second: cacheTestAAcceptLanguage("fr-FR"), want: [2]string{"1:en-US", "2:fr-FR"},
+		},
+		{
+			name: "empty keyed headers disable default header partitioning", mw: New(Config{KeyHeaders: []string{}}), echo: acceptLanguage,
+			first: cacheTestAAcceptLanguage("en-US"), second: cacheTestAAcceptLanguage("fr-FR"), want: [2]string{"1:en-US", "1:en-US"},
+		},
+		{
+			name: "non-keyed headers do not fragment cache", mw: New(), echo: func(c fiber.Ctx) string { return c.Get("X-Request-ID") },
+			first: cacheTestCReq("/", "X-Request-ID", "a"), second: cacheTestCReq("/", "X-Request-ID", "b"), want: [2]string{"1:a", "1:a"},
+		},
+		{
+			name: "body-dependent requests are bypassed by default", mw: New(), method: fiber.MethodPost, echo: func(c fiber.Ctx) string { return string(c.Body()) },
+			first:  httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a")),
+			second: httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("b")), want: [2]string{"1:a", "2:b"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := echoApp(tc.mw, cmp.Or(tc.method, fiber.MethodGet), tc.echo)
+			apptest.ExpectBody(t, app, tc.first, fiber.StatusOK, tc.want[0])
+			apptest.ExpectBody(t, app, tc.second, fiber.StatusOK, tc.want[1])
+		})
+	}
 
 	t.Run("keyed cookies preserve case-sensitive names", func(t *testing.T) {
 		t.Parallel()
@@ -796,30 +955,6 @@ func Test_Cache_DefaultKeyDimensions(t *testing.T) {
 		}
 		require.True(t, foundBoundedKey)
 	})
-
-	t.Run("empty keyed headers disable default header partitioning", func(t *testing.T) {
-		t.Parallel()
-		app := echoApp(New(Config{KeyHeaders: []string{}}), fiber.MethodGet, acceptLanguage)
-
-		apptest.ExpectBody(t, app, cacheTestAAcceptLanguage("en-US"), fiber.StatusOK, "1:en-US")
-		cacheTestAExpectBody(t, app, cacheTestAAcceptLanguage("fr-FR"), cacheHit, "1:en-US")
-	})
-
-	t.Run("non-keyed headers do not fragment cache", func(t *testing.T) {
-		t.Parallel()
-		app := echoApp(New(), fiber.MethodGet, func(c fiber.Ctx) string { return c.Get("X-Request-ID") })
-
-		apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Request-ID", "a")), fiber.StatusOK, "1:a")
-		apptest.ExpectBody(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader("X-Request-ID", "b")), fiber.StatusOK, "1:a")
-	})
-
-	t.Run("body-dependent requests are bypassed by default", func(t *testing.T) {
-		t.Parallel()
-		app := echoApp(New(), fiber.MethodPost, func(c fiber.Ctx) string { return string(c.Body()) })
-
-		apptest.ExpectBody(t, app, httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("a")), fiber.StatusOK, "1:a")
-		apptest.ExpectBody(t, app, httptest.NewRequest(fiber.MethodPost, "/", strings.NewReader("b")), fiber.StatusOK, "2:b")
-	})
 }
 
 // cacheTestAExpectRepeat requests target twice and requires the second response
@@ -835,6 +970,33 @@ func cacheTestAExpectRepeat(t *testing.T, app *fiber.App, target string) []byte 
 	require.True(t, bytes.Equal(body, bodyCached))
 	require.NotEmpty(t, respCached.Header.Get(fiber.HeaderCacheControl))
 	return body
+}
+
+func Test_Cache_NextSeesTheResponse(t *testing.T) {
+	t.Parallel()
+	var handled atomic.Int32
+	app := fiber.New()
+	app.Use(New(Config{Next: func(c fiber.Ctx) bool { return c.Response().StatusCode() == fiber.StatusNotFound }}))
+	app.Get("/*", func(c fiber.Ctx) error {
+		handled.Add(1)
+		if c.Path() == "/missing" {
+			return c.Status(fiber.StatusNotFound).SendString("missing")
+		}
+		return c.SendString("found")
+	})
+
+	for _, step := range []struct {
+		path, cache string
+		handled     int32 // how often the handler has run by then
+	}{
+		{path: "/missing", cache: cacheUnreachable, handled: 1},
+		{path: "/missing", cache: cacheUnreachable, handled: 2},
+		{path: "/", cache: cacheMiss, handled: 3},
+		{path: "/", cache: cacheHit, handled: 3},
+	} {
+		cacheTestAExpect(t, app, step.path, step.cache)
+		require.Equal(t, step.handled, handled.Load(), step.path)
+	}
 }
 
 func Test_Cache_CustomNext(t *testing.T) {
@@ -913,23 +1075,6 @@ func Test_CustomExpiration(t *testing.T) {
 	if !bytes.Equal(cachedBodyNextRound, cachedBody) {
 		t.Errorf("Cache should not have expired: %s, %s", cachedBodyNextRound, cachedBody)
 	}
-}
-
-func Test_AdditionalE2EResponseHeaders(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{StoreResponseHeaders: true}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Response().Header.Add("X-Foobar", "foobar")
-		return c.SendString("hi")
-	})
-
-	resp := apptest.Do(t, app, "/")
-	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
-
-	resp = apptest.Do(t, app, "/")
-	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
 }
 
 // Test_PersonalHeaderIsNotStored asserts that a header which middleware inside the cache marked as
@@ -1011,7 +1156,7 @@ func Test_SetCookieResponseIsNotStored(t *testing.T) {
 // not a blanket refusal of every cookie-setting response.
 func Test_SetCookieResponseSharedCacheOptIn(t *testing.T) {
 	t.Parallel()
-	for _, directive := range []string{"public", "s-maxage=60"} {
+	for _, directive := range []string{"public", "s-maxage=60", "public, max-age=60"} {
 		t.Run(directive, func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
@@ -1019,6 +1164,7 @@ func Test_SetCookieResponseSharedCacheOptIn(t *testing.T) {
 			app.Get("/", func(c fiber.Ctx) error {
 				c.Set(fiber.HeaderCacheControl, directive)
 				c.Cookie(&fiber.Cookie{Name: "session", Value: "shared"})
+				c.Response().Header.Add("X-Foobar", "foobar")
 				return c.SendString("hi")
 			})
 
@@ -1031,6 +1177,7 @@ func Test_SetCookieResponseSharedCacheOptIn(t *testing.T) {
 
 			resp = cacheTestAExpect(t, app, "/", cacheHit)
 			require.Empty(t, resp.Header.Values("Set-Cookie"), "the stored entry must not replay the cookie")
+			require.Equal(t, []string{"foobar"}, resp.Header.Values("X-Foobar"), "the other stored headers come back")
 		})
 	}
 }
@@ -1067,32 +1214,6 @@ func Test_SetCookieFromInnerMiddlewareIsSeen(t *testing.T) {
 	require.Equal(t, 2, calls, "the handler must run for both clients")
 }
 
-// Test_StoreResponseHeaders_DropsSetCookie covers the opt-in path: a route that
-// says a shared cache may store the response is taken at its word, and then the
-// stored copy still leaves Set-Cookie out so the entry cannot hand the first
-// client's session to the rest.
-func Test_StoreResponseHeaders_DropsSetCookie(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	app.Use(New(Config{StoreResponseHeaders: true}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
-		c.Cookie(&fiber.Cookie{Name: "session", Value: "first-client-secret"})
-		c.Response().Header.Add("X-Foobar", "foobar")
-		return c.SendString("hi")
-	})
-
-	resp := cacheTestAExpect(t, app, "/", cacheMiss)
-	require.Contains(t, resp.Header.Get("Set-Cookie"), "session=first-client-secret")
-
-	resp = cacheTestAExpect(t, app, "/", cacheHit)
-	require.Empty(t, resp.Header.Values("Set-Cookie"))
-	// Other stored headers still come back, so the assertion above is about
-	// Set-Cookie specifically and not about header storage being off.
-	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
-}
-
 // Test_StoreResponseHeaders_KeepsRepeatedFieldLines asserts that a header sent
 // on more than one field line comes back off a cache hit intact.
 //
@@ -1123,7 +1244,7 @@ func Test_StoreResponseHeaders_KeepsRepeatedFieldLines(t *testing.T) {
 	resp = cacheTestAExpect(t, app, "/", cacheHit)
 	// Vary is carried by the entry itself rather than by the stored header
 	// list, and comes back on one line with every name (RFC 9110 §5.3).
-	require.Equal(t, []string{"Cookie,Accept-Encoding"}, resp.Header.Values("Vary"))
+	require.Equal(t, []string{"Cookie,Accept-Encoding, Accept, Accept-Language"}, resp.Header.Values("Vary"))
 	require.Equal(t, []string{"default-src 'none'", "script-src 'self'"}, resp.Header.Values("Content-Security-Policy"))
 	// A name sent once is still restored once, so the fix did not turn Set into
 	// an unconditional Add.
@@ -1301,11 +1422,11 @@ func Test_CacheInvalidation_EndsTheEntry(t *testing.T) {
 							}
 						})
 
-						cacheTestCRequireReply(t, getRoot(t, app, nil), cacheMiss, "page")
-						cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "page")
+						cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "page")
+						cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "page")
 						withdrawn.Store(true)
-						require.NotEqual(t, "page", getRoot(t, app, map[string]string{"X-Purge": "1", fiber.HeaderCacheControl: directive}).body)
-						got := getRoot(t, app, nil)
+						require.NotEqual(t, "page", cacheTestCGet(t, app, "/", "X-Purge", "1", fiber.HeaderCacheControl, directive).body)
+						got := cacheTestCGet(t, app, "/")
 						require.NotEqual(t, cacheHit, got.cache, "the invalidated entry was served")
 						require.NotEqual(t, "page", got.body, "the invalidated entry was served")
 					})
@@ -1327,15 +1448,15 @@ func Test_CacheInvalidation_IgnoresMaxStale(t *testing.T) {
 					CacheInvalidator: func(c fiber.Ctx) bool { return c.Get("X-Session-Ended") == "1" },
 				}), "response ")
 
-				cacheTestCRequireReply(t, getRoot(t, app, nil), cacheMiss, "response 1")
-				cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "response 1")
+				cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "response 1")
+				cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "response 1")
 
-				got := getRoot(t, app, map[string]string{"X-Session-Ended": "1", fiber.HeaderCacheControl: maxStale})
+				got := cacheTestCGet(t, app, "/", "X-Session-Ended", "1", fiber.HeaderCacheControl, maxStale)
 				require.Equal(t, "response 2", got.body, "an invalidated entry was served to a request that accepts stale ones")
 				require.NotEqual(t, cacheHit, got.cache)
 				require.Equal(t, int32(2), calls.Load())
 
-				cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "response 2")
+				cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "response 2")
 			})
 		}
 	}
@@ -1360,10 +1481,10 @@ func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 			}))
 			app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
 
-			require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
-			require.Equal(t, fiber.StatusInternalServerError, getRoot(t, app, map[string]string{"X-Panic": "1"}).status)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
+			require.Equal(t, fiber.StatusInternalServerError, cacheTestCGet(t, app, "/", "X-Panic", "1").status)
 			// The next request must not wait on a lock left held, and the panicking one's entry is back in the pool.
-			cacheTestCRequireReply(t, getRoot(t, app, nil), cacheHit, "ok")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "ok")
 		})
 	}
 
@@ -1386,7 +1507,7 @@ func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 			},
 		}))
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
-		require.Equal(t, cacheMiss, getRoot(t, app, nil).cache)
+		require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
 
 		slowErr := make(chan error, 1)
 		go func() {
@@ -1401,7 +1522,7 @@ func Test_CacheInvalidation_RunsWithoutTheLock(t *testing.T) {
 		<-entered
 
 		// Served while the lookup is still running.
-		require.Equal(t, cacheHit, getRoot(t, app, nil).cache)
+		require.Equal(t, cacheHit, cacheTestCGet(t, app, "/").cache)
 
 		releaseSlow()
 		require.NoError(t, <-slowErr)
@@ -1657,7 +1778,7 @@ func Test_Cache_FailedRefresh(t *testing.T) {
 
 			storage.SetErr(storagetest.OpSet, tc.failedKey, errors.New("boom"))
 
-			apptest.Expect(t, app, cacheTestAGetCC("/", noCache), fiber.StatusInternalServerError)
+			cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", noCache), cacheUnreachable, fiber.StatusOK)
 
 			if !tc.keepsOld {
 				counted, nodes = 0, 0
@@ -1839,6 +1960,62 @@ func Test_Cache_MaxBytesEviction(t *testing.T) {
 				rsp := apptest.Do(t, app, step[0])
 				require.Equal(t, step[1], rsp.Header.Get("X-Cache"), "Case %v", idx)
 			}
+		})
+	}
+}
+
+func Test_Cache_EvictionOrderCountsNoMoreThanExpiration(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name          string
+		next, evicted string
+		stored, kept  []string // stored gap apart, in this order, and the room is theirs
+		gap, expire   time.Duration
+	}{
+		{
+			name: "an entry with a long lifetime goes in the order it was stored", next: "/page/1", evicted: "/long/0",
+			stored: []string{"/long/0", "/long/1", "/long/2", "/page/0"}, kept: []string{"/long/1", "/long/2", "/page/0"},
+			gap: time.Second, expire: time.Minute,
+		},
+		{
+			name: "an entry that expires sooner goes first", next: "/page/2", evicted: "/fast/0",
+			stored: []string{"/page/0", "/fast/0", "/page/1"}, kept: []string{"/page/0", "/page/1"},
+			gap: time.Second, expire: time.Minute,
+		},
+		{
+			name: "an entry that has expired goes before one due sooner", next: "/page/0", evicted: "/half/0",
+			stored: []string{"/long/0", "/half/0"}, kept: []string{"/long/0"}, gap: 5 * time.Minute, expire: 5 * time.Minute,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			lifetime := func(c fiber.Ctx, _ *Config) time.Duration {
+				switch {
+				case strings.HasPrefix(c.Path(), "/long/"):
+					return 365 * 24 * time.Hour
+				case strings.HasPrefix(c.Path(), "/fast/"):
+					return 10 * time.Second
+				case strings.HasPrefix(c.Path(), "/half/"):
+					return 30 * time.Second
+				default:
+					return tc.expire
+				}
+			}
+			clock := cacheTestCClock()
+			size := charged(defaultKey(tc.next), len("x"), textPlain) // every path is as long
+			app := fiber.New()
+			app.Use(New(Config{MaxBytes: uint(len(tc.stored)) * size, Expiration: tc.expire, ExpirationGenerator: lifetime, clock: clock.Now}))
+			app.Get("/*", func(c fiber.Ctx) error { return c.SendString("x") })
+
+			for _, path := range tc.stored {
+				cacheTestAExpect(t, app, path, cacheMiss)
+				clock.Add(tc.gap)
+			}
+			cacheTestAExpect(t, app, tc.next, cacheMiss)
+			for _, path := range append(tc.kept, tc.next) {
+				cacheTestAExpect(t, app, path, cacheHit)
+			}
+			cacheTestAExpectStatus(t, app, cacheTestAGetCC(tc.evicted, "only-if-cached, max-stale"), cacheUnreachable, fiber.StatusGatewayTimeout)
 		})
 	}
 }
@@ -2182,35 +2359,60 @@ func Test_CacheOnlyIfCachedMiss(t *testing.T) {
 	require.Zero(t, calls.Load())
 }
 
-func Test_CacheOnlyIfCachedStaleNotServed(t *testing.T) {
+func Test_CacheRequestDirectivesAgainstAStoredEntry(t *testing.T) {
 	t.Parallel()
-	app, calls := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=1")
-
-	cacheTestAExpect(t, app, "/", cacheMiss)
-
-	time.Sleep(1500 * time.Millisecond)
-
-	cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
-	require.Equal(t, int32(1), calls.Load())
+	for _, tc := range []struct {
+		name, stored, directive string    // the Cache-Control of the stored response, and of the request after wait
+		auth                    string    // the Authorization both requests send
+		cache, body             string    // X-Cache and body of that request; 504 for none
+		then                    [2]string // X-Cache and body of a plain request after it, if any
+		wait                    time.Duration
+		calls                   int32
+	}{
+		{name: "only-if-cached does not serve a stale entry", stored: "public, max-age=1", wait: 2 * time.Second, directive: "only-if-cached", cache: cacheUnreachable, calls: 1},
+		{name: "max-stale serves a stale entry", stored: "public, max-age=2", wait: 3 * time.Second, directive: "max-stale=5", cache: cacheHit, body: "1", calls: 1, then: [2]string{cacheMiss, "2"}},
+		{name: "must-revalidate overrides max-stale", stored: "public, max-age=1, must-revalidate", wait: 2 * time.Second, directive: "max-stale=30", cache: cacheMiss, body: "2", calls: 2},
+		{
+			name: "proxy-revalidate overrides max-stale for a shared authorized entry", stored: "s-maxage=2, proxy-revalidate", auth: "Bearer abc",
+			wait: 3 * time.Second, directive: "max-stale=30", cache: cacheMiss, body: "2", calls: 2,
+		},
+		{name: "min-fresh past the remaining lifetime goes to the origin", stored: "public, max-age=5", directive: "min-fresh=10", cache: cacheMiss, body: "2", calls: 2, then: [2]string{cacheHit, "2"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			clock := cacheTestCClock()
+			app, calls := cacheTestAOrigin(New(Config{clock: clock.Now}), "", fiber.HeaderCacheControl, tc.stored)
+			cacheTestAExpect(t, app, cacheTestCReq("/", fiber.HeaderAuthorization, tc.auth), cacheMiss)
+			clock.Add(tc.wait)
+			req := cacheTestCReq("/", fiber.HeaderAuthorization, tc.auth, fiber.HeaderCacheControl, tc.directive)
+			if tc.body == "" {
+				cacheTestAExpectStatus(t, app, req, tc.cache, fiber.StatusGatewayTimeout)
+			} else {
+				cacheTestAExpectBody(t, app, req, tc.cache, tc.body)
+			}
+			require.Equal(t, tc.calls, calls.Load())
+			if tc.then[0] != "" {
+				cacheTestAExpectBody(t, app, cacheTestCReq("/", fiber.HeaderAuthorization, tc.auth), tc.then[0], tc.then[1])
+			}
+		})
+	}
 }
 
-// Test_CacheOnlyIfCachedWithNoCache covers a request that asks for a stored
-// response and refuses to have it served unvalidated. RFC 9111 Section 5.2.1.7
-// has a cache that cannot satisfy only-if-cached without contacting the origin
-// answer 504, and validating a stored response is contacting the origin. The
-// fresh entry used to fall through to the handler instead.
-func Test_CacheOnlyIfCachedWithNoCache(t *testing.T) {
+// RFC 9111 Section 5.2.1.7: only-if-cached is served from the cache or answered 504, never by the handler.
+func Test_CacheOnlyIfCachedBesideAnotherDirective(t *testing.T) {
 	t.Parallel()
 	requests := []struct {
-		header map[string]string
 		name   string
+		header []string // name and value pairs
+		hit    bool     // served from the cache; no-store forbids only storing (Section 5.2.1.5)
 	}{
-		{name: "no-cache beside only-if-cached", header: map[string]string{fiber.HeaderCacheControl: "no-cache, only-if-cached"}},
-		{name: "only-if-cached before no-cache", header: map[string]string{fiber.HeaderCacheControl: "only-if-cached, no-cache"}},
-		{name: "Pragma no-cache", header: map[string]string{fiber.HeaderCacheControl: "only-if-cached", fiber.HeaderPragma: "no-cache"}},
-		{name: "max-age=0 behaves the same way", header: map[string]string{fiber.HeaderCacheControl: "max-age=0, only-if-cached"}},
+		{name: "no-cache beside only-if-cached", header: []string{fiber.HeaderCacheControl, "no-cache, only-if-cached"}},
+		{name: "only-if-cached before no-cache", header: []string{fiber.HeaderCacheControl, "only-if-cached, no-cache"}},
+		{name: "Pragma no-cache", header: []string{fiber.HeaderCacheControl, "only-if-cached", fiber.HeaderPragma, "no-cache"}},
+		{name: "max-age=0 behaves the same way", header: []string{fiber.HeaderCacheControl, "max-age=0, only-if-cached"}},
+		{name: "no-store beside only-if-cached", header: []string{fiber.HeaderCacheControl, "no-store, only-if-cached"}, hit: true},
+		{name: "only-if-cached before no-store", header: []string{fiber.HeaderCacheControl, "only-if-cached, no-store"}, hit: true},
 	}
-
 	for _, storageName := range []string{"in-memory", "storage"} {
 		for _, tc := range requests {
 			t.Run(storageName+"/"+tc.name, func(t *testing.T) {
@@ -2219,73 +2421,20 @@ func Test_CacheOnlyIfCachedWithNoCache(t *testing.T) {
 				if storageName == "storage" {
 					cfg.Storage = memory.New()
 				}
-
 				app, calls := cacheTestAOrigin(New(cfg), "origin-", fiber.HeaderCacheControl, "public, max-age=60")
-
-				// A fresh entry, stored by an ordinary request.
 				cacheTestAExpect(t, app, "/", cacheMiss)
-				require.Equal(t, int32(1), calls.Load())
 
-				req := apptest.Req(fiber.MethodGet, "/")
-				for k, v := range tc.header {
-					req.Header.Set(k, v)
+				if tc.hit {
+					cacheTestAExpectBody(t, app, cacheTestCReq("/", tc.header...), cacheHit, "origin-1")
+				} else {
+					cacheTestAExpectStatus(t, app, cacheTestCReq("/", tc.header...), cacheUnreachable, fiber.StatusGatewayTimeout)
 				}
-				cacheTestAExpectStatus(t, app, req, cacheUnreachable, fiber.StatusGatewayTimeout)
+				cacheTestAExpectStatus(t, app, cacheTestCReq("/?other", tc.header...), cacheUnreachable, fiber.StatusGatewayTimeout)
 				require.Equal(t, int32(1), calls.Load(), "only-if-cached must not reach the handler")
-
-				// The refusal leaves the stored response alone.
-				resp := cacheTestAExpectStatus(t, app, "/", cacheHit, fiber.StatusOK)
-				require.Equal(t, "origin-1", apptest.Body(t, resp))
-				require.Equal(t, int32(1), calls.Load())
+				cacheTestAExpectBody(t, app, "/", cacheHit, "origin-1")
 			})
 		}
 	}
-}
-
-func Test_CacheMaxStaleServesStaleResponse(t *testing.T) {
-	t.Parallel()
-	app, calls := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=2")
-
-	cacheTestAExpect(t, app, "/", cacheMiss)
-	cacheTestAExpect(t, app, "/", cacheHit)
-
-	time.Sleep(2500 * time.Millisecond)
-
-	resp := apptest.Do(t, app, cacheTestAGetCC("/", "max-stale=5"))
-	require.Equalf(t, cacheHit, resp.Header.Get("X-Cache"), "dirs=%+v Age=%s count=%d", parseRequestCacheControl([]byte("max-stale=5")), resp.Header.Get(fiber.HeaderAge), calls.Load())
-	require.Equal(t, "1", apptest.Body(t, resp))
-	require.Equal(t, int32(1), calls.Load())
-}
-
-func Test_CacheMaxStaleRespectsMustRevalidate(t *testing.T) {
-	t.Parallel()
-	app, calls := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=1, must-revalidate")
-
-	cacheTestAExpect(t, app, "/", cacheMiss)
-
-	time.Sleep(1500 * time.Millisecond)
-
-	cacheTestAExpectBody(t, app, cacheTestAGetCC("/", "max-stale=30"), cacheMiss, "2")
-	require.Equal(t, int32(2), calls.Load())
-}
-
-func Test_CacheMaxStaleRespectsProxyRevalidateSharedAuth(t *testing.T) {
-	t.Parallel()
-	// s-maxage=2, not 1: the store phase reads cfg.now() twice and charges the
-	// whole second in between as apparent age, so a one-second lifetime can be
-	// consumed entirely and the entry reported unreachable instead of cached.
-	app, calls := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "s-maxage=2, proxy-revalidate")
-
-	cacheTestAExpect(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAuthorization, "Bearer abc")), cacheMiss)
-
-	time.Sleep(2500 * time.Millisecond)
-
-	req := apptest.Req(fiber.MethodGet, "/",
-		apptest.WithHeader(fiber.HeaderAuthorization, "Bearer abc"),
-		apptest.WithHeader(fiber.HeaderCacheControl, "max-stale=30"))
-
-	cacheTestAExpectBody(t, app, req, cacheMiss, "2")
-	require.Equal(t, int32(2), calls.Load())
 }
 
 func Test_CachePreservesCacheControlHeaders(t *testing.T) {
@@ -2306,6 +2455,36 @@ func Test_CachePreservesCacheControlHeaders(t *testing.T) {
 		require.Equal(t, "public, max-age=5, immutable", resp.Header.Get(fiber.HeaderCacheControl))
 		require.Equal(t, expires, resp.Header.Get(fiber.HeaderExpires))
 		require.Equal(t, `W/"abc"`, resp.Header.Get(fiber.HeaderETag))
+	}
+}
+
+// A lifetime given twice counts the smaller, on one field line or two.
+func Test_Cache_SmallestLifetimeOfTheResponseCounts(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		lines []string
+		cache []string
+	}{
+		{name: "none left, then an hour", lines: []string{"max-age=0, max-age=3600"}, cache: []string{cacheUnreachable, cacheUnreachable}},
+		{name: "none left, then an hour on a line of its own", lines: []string{"max-age=0", "max-age=3600"}, cache: []string{cacheUnreachable, cacheUnreachable}},
+		{name: "an hour, then none left", lines: []string{"max-age=3600", "max-age=0"}, cache: []string{cacheUnreachable, cacheUnreachable}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error {
+				for _, line := range tc.lines {
+					c.Response().Header.Add(fiber.HeaderCacheControl, line)
+				}
+				return c.SendString("ok")
+			})
+
+			for _, want := range tc.cache {
+				cacheTestAExpect(t, app, "/", want)
+			}
+		})
 	}
 }
 
@@ -2534,19 +2713,6 @@ func Test_CacheAgeHeaderIsCappedAtMaxDeltaSeconds(t *testing.T) {
 	require.Equal(t, math.MaxInt32, ageVal)
 }
 
-func Test_CacheMinFreshForcesRevalidation(t *testing.T) {
-	t.Parallel()
-	app, calls := cacheTestAOrigin(New(), "", fiber.HeaderCacheControl, "public, max-age=5")
-
-	cacheTestAExpectBody(t, app, "/", cacheMiss, "1")
-
-	resp := apptest.Do(t, app, cacheTestAGetCC("/", "min-fresh=10"))
-	require.Equalf(t, cacheMiss, resp.Header.Get("X-Cache"), "dirs=%+v Age=%s count=%d", parseRequestCacheControl([]byte("min-fresh=10")), resp.Header.Get(fiber.HeaderAge), calls.Load())
-	require.Equal(t, "2", apptest.Body(t, resp))
-
-	cacheTestAExpectBody(t, app, "/", cacheHit, "2")
-}
-
 func Test_CacheDeltaSecondsOverflow(t *testing.T) {
 	t.Parallel()
 	const huge = "99999999999999999999"
@@ -2672,31 +2838,30 @@ func Test_CachePermanentRedirectCached(t *testing.T) {
 	}
 }
 
-func Test_CacheNoCacheDirectiveOverridesExistingEntry(t *testing.T) {
+func Test_CacheResponseDirectiveEndsTheStoredEntry(t *testing.T) {
 	t.Parallel()
-	var noCacheMode atomic.Bool
-	app := fiber.New()
-	app.Use(New())
-	app.Get("/", cacheTestBFlipping(&noCacheMode, "public, max-age=60", "no-cache"))
+	for _, tc := range []struct {
+		directive string
+		then      [2]string // X-Cache and body of a plain request after the reload
+		stays     bool      // the response keeps the directive for that request
+	}{
+		{directive: "no-cache", stays: true, then: [2]string{cacheUnreachable, "newer"}},
+		{directive: "private", then: [2]string{cacheMiss, "stale"}},
+	} {
+		t.Run(tc.directive, func(t *testing.T) {
+			t.Parallel()
+			var flipped atomic.Bool
+			app := fiber.New()
+			app.Use(New())
+			app.Get("/", cacheTestBFlipping(&flipped, "public, max-age=60", tc.directive))
 
-	cacheTestAExpectBody(t, app, "/", cacheMiss, "stale")
-	noCacheMode.Store(true)
-	cacheTestAExpectBody(t, app, cacheTestAGetCC("/", "no-cache"), cacheUnreachable, "newer")
-	cacheTestAExpectBody(t, app, "/", cacheUnreachable, "newer")
-}
-
-func Test_CachePrivateDirectiveInvalidatesExistingEntry(t *testing.T) {
-	t.Parallel()
-	var privateMode atomic.Bool
-	app := fiber.New()
-	app.Use(New())
-	app.Get("/", cacheTestBFlipping(&privateMode, "public, max-age=60", "private"))
-
-	cacheTestAExpectBody(t, app, "/", cacheMiss, "stale")
-	privateMode.Store(true)
-	cacheTestAExpectBody(t, app, cacheTestAGetCC("/", "no-cache"), cacheUnreachable, "newer")
-	privateMode.Store(false)
-	cacheTestAExpectBody(t, app, "/", cacheMiss, "stale")
+			cacheTestAExpectBody(t, app, "/", cacheMiss, "stale")
+			flipped.Store(true)
+			cacheTestAExpectBody(t, app, cacheTestAGetCC("/", "no-cache"), cacheUnreachable, "newer")
+			flipped.Store(tc.stays)
+			cacheTestAExpectBody(t, app, "/", tc.then[0], tc.then[1])
+		})
+	}
 }
 
 // An entry whose upstream Age leaves it a second of its max-age expires after that second.
@@ -2941,13 +3106,33 @@ func Test_CacheStorage_EvictionRestoreDropsAbsentOrReplacedEntry(t *testing.T) {
 	for _, mutation := range []string{"missing", "replaced"} {
 		t.Run(mutation, func(t *testing.T) {
 			t.Parallel()
-			storage := &restoreMutationStorage{
-				Memory:   storagetest.New(),
-				key:      cacheKeyVersion + "|GET|/old",
-				mutation: mutation,
-			}
+			key, base := cacheKeyVersion+"|GET|/old", storagetest.New()
+			var armed atomic.Bool
+			storage := &hookedStorage{Memory: base, onDelete: func(k string) error {
+				if k != key || !armed.CompareAndSwap(true, false) {
+					return nil
+				}
+				base.Mu.Lock()
+				defer base.Mu.Unlock()
+				if mutation == "missing" {
+					delete(base.Data, key)
+					delete(base.Data, bodyKey(key))
+					return errors.New("eviction delete failed")
+				}
+				var entry item
+				if _, err := entry.UnmarshalMsg(base.Data[key]); err != nil {
+					return err
+				}
+				entry.heapgen += 1000
+				raw, err := entry.MarshalMsg(nil)
+				if err != nil {
+					return err
+				}
+				base.Data[key] = raw
+				return errors.New("eviction delete failed")
+			}}
 			probe := &accountingProbe{}
-			stale := charged(storage.key, len("stale"), textPlain)
+			stale := charged(key, len("stale"), textPlain)
 			app := cacheTestBPathKeyedApp(&Config{MaxBytes: stale, Storage: storage, accounting: probe.record})
 			app.Get("/:name", func(c fiber.Ctx) error {
 				if c.Path() == "/old" {
@@ -2959,8 +3144,8 @@ func Test_CacheStorage_EvictionRestoreDropsAbsentOrReplacedEntry(t *testing.T) {
 			cacheTestAExpect(t, app, "/old", cacheMiss)
 			cacheTestBRequireAccounting(t, probe, stale, 1)
 
-			storage.armed.Store(true)
-			apptest.Expect(t, app, "/new", fiber.StatusInternalServerError)
+			armed.Store(true)
+			cacheTestAExpectBody(t, app, "/new", cacheUnreachable, "fresh")
 			cacheTestBRequireAccounting(t, probe, 0, 0)
 		})
 	}
@@ -3011,15 +3196,11 @@ func (p *cacheTestBParked) finish(t *testing.T) *http.Response {
 
 func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *testing.T) {
 	t.Parallel()
-	storage := &blockingFailedEvictionStorage{
-		Memory:         storagetest.New(),
-		key:            cacheKeyVersion + "|GET|/old",
-		started:        make(chan struct{}),
-		continueDelete: make(chan struct{}),
-	}
+	key, gate := cacheKeyVersion+"|GET|/old", newCacheTestGate(false)
+	storage := cacheTestParkedDelete(key, gate, errors.New("eviction delete failed"))
 	probe := &accountingProbe{}
 	fresh := charged(cacheKeyVersion+"|GET|/new", len("012345678"), textPlain, "public, max-age=60")
-	replacement := charged(storage.key, len("x"), textPlain, "public, max-age=60")
+	replacement := charged(key, len("x"), textPlain, "public, max-age=60")
 	app := cacheTestBPathKeyedApp(&Config{MaxBytes: fresh + replacement, Storage: storage, accounting: probe.record})
 	app.Get("/:name", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderCacheControl, "public, max-age=60")
@@ -3035,15 +3216,177 @@ func Test_CacheStorage_EvictionRestoreDropsOldNodeAfterConcurrentReplacement(t *
 
 	cacheTestAExpect(t, app, "/old", cacheMiss)
 
-	storage.armed.Store(true)
-	evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/new"), storage.started, storage.continueDelete)
+	gate.armed.Store(true)
+	evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/new"), gate.entered, gate.release)
 
 	apptest.Expect(t, app, cacheTestAGetCC("/old?replacement=true", "max-age=0"), fiber.StatusOK)
 
-	oldResp := evicting.finish(t)
-	require.Equal(t, fiber.StatusInternalServerError, oldResp.StatusCode)
+	unstored := evicting.finish(t)
+	require.Equal(t, fiber.StatusOK, unstored.StatusCode)
+	require.Equal(t, cacheUnreachable, unstored.Header.Get("X-Cache"))
 	cacheTestBRequireAccounting(t, probe, replacement, 1)
-	require.True(t, storage.Holds(storage.key), "the replacement is stored")
+	require.True(t, storage.Holds(key), "the replacement is stored")
+}
+
+func Test_CacheStorage_FailedEvictionPutsBackWhatTheStorageHolds(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		reload   string // the Cache-Control of the request for /b made while the eviction is parked
+		withdraw bool   // the app answers it with no-store, which deletes /b
+	}{
+		{name: "an entry deleted meanwhile stays out", reload: "max-age=0", withdraw: true},
+		{name: "an entry a reload failed to replace goes back", reload: "no-cache"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			clock := cacheTestCClock()
+			key, gate := cacheKeyVersion+"|GET|/a", newCacheTestGate(false)
+			storage := cacheTestParkedDelete(key, gate, errors.New("eviction delete failed"))
+			probe := &accountingProbe{}
+			entry := charged(key, len("x"), textPlain) // /a and /b alike
+			bigKey := cacheKeyVersion + "|GET|/big"
+			var withdrawn atomic.Bool
+			app := cacheTestBPathKeyedApp(&Config{MaxBytes: 2 * entry, Storage: storage, accounting: probe.record, clock: clock.Now})
+			app.Get("/:name", func(c fiber.Ctx) error {
+				switch {
+				case c.Path() == "/big":
+					// Needs the room of both entries.
+					return c.Send(make([]byte, int(2*entry)-len(bigKey)-len(textPlain)))
+				case c.Path() == "/b" && withdrawn.Load():
+					c.Set(fiber.HeaderCacheControl, "no-store")
+				}
+				return c.SendString("x")
+			})
+
+			cacheTestAExpect(t, app, "/a", cacheMiss)
+			clock.Add(time.Second)
+			cacheTestAExpect(t, app, "/b", cacheMiss)
+			cacheTestBRequireAccounting(t, probe, 2*entry, 2)
+
+			// The store of /big pops both nodes and parks in the delete of /a, which then fails.
+			gate.armed.Store(true)
+			evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/big"), gate.entered, gate.release)
+			withdrawn.Store(tc.withdraw)
+			cacheTestAExpect(t, app, cacheTestAGetCC("/b", tc.reload), cacheUnreachable)
+			require.Equal(t, cacheUnreachable, evicting.finish(t).Header.Get("X-Cache"))
+
+			held := 1
+			if !tc.withdraw {
+				held = 2
+			}
+			require.Equal(t, !tc.withdraw, storage.Holds(cacheKeyVersion+"|GET|/b"))
+			require.True(t, storage.Holds(key))
+			cacheTestBRequireAccounting(t, probe, uint(held)*entry, held)
+		})
+	}
+}
+
+func Test_CacheStorage_FailedEvictionReadsBackAnEntryAStoreTookUp(t *testing.T) {
+	t.Parallel()
+	kKey, xKey, bigKey := cacheKeyVersion+"|GET|/k", cacheKeyVersion+"|GET|/x", cacheKeyVersion+"|GET|/big"
+	const ccK, ccX = "public, max-age=120", "public, max-age=60"
+	sizeK, sizeX := charged(kKey, len("kkkk"), textPlain, ccK), charged(xKey, len("xxxxxxxxxxxxxxxxxx"), textPlain, ccX)
+	// One byte over /x, so the eviction pops /x and then /k, leaving room for a /k one byte shorter.
+	bigBody := strings.Repeat("b", int(sizeX)+1-len(bigKey)-len(textPlain)-len(ccX))
+	gate := newCacheTestGate(false)
+	storage := cacheTestParkedDelete(xKey, gate, errors.New("eviction delete failed"))
+	var short, noStore atomic.Bool
+	probe := &accountingProbe{}
+	app := cacheTestBPathKeyedApp(&Config{MaxBytes: sizeK + sizeX, Storage: storage, accounting: probe.record})
+	app.Get("/:name", func(c fiber.Ctx) error {
+		body, cacheControl := bigBody, ccX
+		switch {
+		case c.Path() == "/x":
+			body = "xxxxxxxxxxxxxxxxxx"
+		case c.Path() != "/k":
+		case noStore.Load():
+			body, cacheControl = "gone", "no-store"
+		case short.Load():
+			body, cacheControl = "kkk", ccK
+		default:
+			body, cacheControl = "kkkk", ccK
+		}
+		c.Set(fiber.HeaderCacheControl, cacheControl)
+		return c.SendString(body)
+	})
+	cacheTestAExpect(t, app, "/k", cacheMiss)
+	cacheTestAExpect(t, app, "/x", cacheMiss)
+
+	// /big parks deleting /x, which then fails; meanwhile a reload replaces /k and a no-store reload deletes it.
+	gate.armed.Store(true)
+	evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/big"), gate.entered, gate.release)
+	short.Store(true)
+	cacheTestAExpect(t, app, cacheTestAGetCC("/k", "max-age=0"), cacheMiss)
+	noStore.Store(true)
+	cacheTestAExpect(t, app, cacheTestAGetCC("/k", "max-age=0"), cacheUnreachable)
+	require.Equal(t, cacheUnreachable, evicting.finish(t).Header.Get("X-Cache"))
+
+	require.False(t, storage.Holds(kKey))
+	cacheTestBRequireAccounting(t, probe, sizeX, 1)
+}
+
+func Test_CacheStorage_FailedEvictionLeavesOutANodeARestoreDropped(t *testing.T) {
+	t.Parallel()
+	aKey, cKey, bigKey := cacheKeyVersion+"|GET|/a", cacheKeyVersion+"|GET|/c", cacheKeyVersion+"|GET|/big"
+	const ccA, ccC = "public, max-age=120", "public, max-age=60"
+	sizeA, sizeC := charged(aKey, len("aaaa"), textPlain, ccA), charged(cKey, len("cccccccccccccccccc"), textPlain, ccC)
+	bigBody := strings.Repeat("b", int(sizeA+sizeC)-len(bigKey)-len(textPlain)-len(ccC)) // the room of both
+	deleting, reading := newCacheTestGate(false), newCacheTestGate(false)
+	var failBodyWrite atomic.Bool
+	storage := &hookedStorage{Memory: storagetest.New()}
+	storage.onDelete = func(k string) error {
+		if k == cKey && deleting.park() {
+			return errors.New("eviction delete failed")
+		}
+		return nil
+	}
+	storage.onSet = func(k string, _ time.Duration) error {
+		if k != bodyKey(aKey) || !failBodyWrite.CompareAndSwap(true, false) {
+			return nil
+		}
+		// /a goes while the reload holds its node out of the heap, and the write that was to replace it fails.
+		if err := storage.Delete(aKey); err != nil {
+			return err
+		}
+		if err := storage.Delete(bodyKey(aKey)); err != nil {
+			return err
+		}
+		reading.armed.Store(true)
+		return errors.New("body write failed")
+	}
+	storage.onGet = func(k string) error {
+		if k == aKey {
+			reading.park()
+		}
+		return nil
+	}
+	probe := &accountingProbe{}
+	app := cacheTestBPathKeyedApp(&Config{MaxBytes: sizeA + sizeC, Storage: storage, accounting: probe.record})
+	app.Get("/:name", func(c fiber.Ctx) error {
+		body, cacheControl := bigBody, ccC
+		switch c.Path() {
+		case "/a":
+			body, cacheControl = "aaaa", ccA
+		case "/c":
+			body = "cccccccccccccccccc"
+		}
+		c.Set(fiber.HeaderCacheControl, cacheControl)
+		return c.SendString(body)
+	})
+	cacheTestAExpect(t, app, "/a", cacheMiss)
+	cacheTestAExpect(t, app, "/c", cacheMiss)
+
+	// The failed reload of /a parks reading /a back; /big pops /c and /a and parks deleting /c, which then fails.
+	failBodyWrite.Store(true)
+	reloading := cacheTestBPark(t, app, cacheTestAGetCC("/a", "max-age=0"), reading.entered, reading.release)
+	deleting.armed.Store(true)
+	evicting := cacheTestBPark(t, app, apptest.Req(fiber.MethodGet, "/big"), deleting.entered, deleting.release)
+	require.Equal(t, cacheUnreachable, reloading.finish(t).Header.Get("X-Cache"))
+	require.Equal(t, cacheUnreachable, evicting.finish(t).Header.Get("X-Cache"))
+
+	require.False(t, storage.Holds(aKey))
+	cacheTestBRequireAccounting(t, probe, sizeC, 1)
 }
 
 func Test_CacheStorage_MinFreshUncacheableRevalidationCleansEntry(t *testing.T) {
@@ -3220,17 +3563,13 @@ func (r *cacheTestBRace) finish(t *testing.T) {
 
 func Test_Cache_ConcurrentUncacheableCleanupPreservesReplacementAccounting(t *testing.T) {
 	t.Parallel()
-	storage := &blockingDeleteStorage{
-		Memory:         storagetest.New(),
-		deleteStarted:  make(chan struct{}),
-		continueDelete: make(chan struct{}),
-		key:            cacheKeyVersion + "|GET|/cached",
-	}
+	gate := newCacheTestGate(true)
+	storage := cacheTestParkedDelete(cacheKeyVersion+"|GET|/cached", gate, nil)
 	probe := &accountingProbe{}
 	app := cacheTestBPathKeyedApp(&Config{MaxBytes: 2 * replacementCharge, Storage: storage, accounting: probe.record})
 	app.Get("/cached", cacheTestBVersionedOrigin(nil, nil))
 
-	race := cacheTestBStartRace(t, app, storage.deleteStarted, storage.continueDelete)
+	race := cacheTestBStartRace(t, app, gate.entered, gate.release)
 	race.replace(t)
 	cacheTestBRequireAccounting(t, probe, replacementCharge, 1)
 
@@ -3510,8 +3849,10 @@ func Benchmark_Cache_HitConfigs(b *testing.B) {
 		vary    string
 		cfg     Config
 		refused bool // another session's refusal is recorded before the hits are measured
+		written bool // a request that is not safe has succeeded before the hits are measured
 	}{
 		{name: "default"},
+		{name: "after a write", written: true},
 		{name: "vary", vary: "Accept-Encoding, Accept-Language"},
 		{name: "vary Cookie", vary: "Cookie"},
 		{name: "invalidator", cfg: Config{CacheInvalidator: func(fiber.Ctx) bool { return false }}},
@@ -3535,10 +3876,16 @@ func Benchmark_Cache_HitConfigs(b *testing.B) {
 				}
 				return c.SendString("body")
 			})
+			app.Put("/written", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 			h, fctx := cacheBenchStored(app, fiber.MethodGet, func(req *fasthttp.Request) {
 				req.Header.Set("X-API-Key", "tok_0123456789abcdefghijklmnopqrstuvwxyz")
 				req.Header.SetCookie("session", "abc")
 			})
+
+			if bc.written {
+				// The table of writes is allocated by the first one, and every hit looks in it from then on.
+				apptest.Expect(b, app, apptest.Req(fiber.MethodPut, "/written"), fiber.StatusNoContent)
+			}
 
 			if bc.refused {
 				// Another session's entry, then its refusal on a revalidation, leave a record in the group.
@@ -3673,15 +4020,15 @@ func Benchmark_Cache_QueryMethod(b *testing.B) {
 
 func Benchmark_Cache_MaxSize(b *testing.B) {
 	// The benchmark is run with three different MaxSize parameters
-	// 1) 0:        Tracking is disabled = no overhead
+	// 1) no limit: Tracking is disabled = no overhead
 	// 2) MaxInt32: Enough to store all entries = no removals
 	// 3) 16 KiB:   Small size = constant insertions and removals
-	cases := []uint{0, math.MaxUint32, 16 * 1024}
+	cases := []Config{{DisableMaxBytes: true}, {MaxBytes: math.MaxUint32}, {MaxBytes: 16 * 1024}}
 	names := []string{"Disabled", "Unlim", "LowBounded"}
-	for i, size := range cases {
+	for i := range cases {
 		b.Run(names[i], func(b *testing.B) {
 			app := fiber.New()
-			app.Use(New(Config{MaxBytes: size}))
+			app.Use(New(cases[i]))
 
 			app.Get("/*", func(c fiber.Ctx) error { return c.Status(fiber.StatusOK).SendString("1") })
 
@@ -3909,15 +4256,55 @@ func Test_Cache_MaxBytes_DeletionFailureRestoresTracking(t *testing.T) {
 		}
 	}
 
-	// Next request triggers eviction; deletion failure should surface an error
-	rsp := apptest.Do(t, app, "/second")
-	require.Equal(t, fiber.StatusInternalServerError, rsp.StatusCode)
-	require.Contains(t, apptest.Body(t, rsp), "failed to delete key")
+	// /second needs the room of /first, which cannot be deleted: it is answered unstored.
+	cacheTestAExpectBody(t, app, "/second", cacheUnreachable, "data")
 	t.Logf("stored keys after deletion failure: %v", storage.Keys())
+	cacheTestAExpect(t, app, "/first", cacheHit)
 	storage.ClearErrs()
 
 	// Another request should succeed and be cacheable after restoring heap tracking
 	cacheTestAExpect(t, app, "/third", cacheMiss)
+}
+
+func Test_Cache_FailedEvictionChecksOnlyTheEntryItFailedOn(t *testing.T) {
+	t.Parallel()
+	const entries = 20
+	storage := storagetest.New()
+	probe := &accountingProbe{}
+	path := func(i int) string { return fmt.Sprintf("/s/%02d", i) }
+	size := charged(defaultKey(path(0)), len("0123456789"), textPlain)
+	app := fiber.New()
+	app.Use(New(Config{Storage: storage, Expiration: time.Hour, MaxBytes: entries * size, accounting: probe.record}))
+	app.Get("/s/:id", func(c fiber.Ctx) error { return c.SendString("0123456789") })
+	// Half of what fits, so the store needs the room of about half of the entries.
+	app.Get("/big", func(c fiber.Ctx) error { return c.Send(make([]byte, entries*size/2)) })
+
+	for i := range entries {
+		cacheTestAExpect(t, app, path(i), cacheMiss)
+	}
+	cacheTestBRequireAccounting(t, probe, entries*size, entries)
+
+	for i := range entries {
+		for _, op := range []string{storagetest.OpGet, storagetest.OpDelete} {
+			storage.SetErr(op, defaultKey(path(i)), errors.New("storage unavailable"))
+		}
+	}
+	storage.ClearCalls()
+	cacheTestAExpect(t, app, "/big", cacheUnreachable)
+
+	reads := 0
+	for _, key := range storage.CallKeys(storagetest.OpGet) {
+		if strings.Contains(key, "|/s/") {
+			reads++
+		}
+	}
+	require.Equal(t, 1, reads, "only the entry whose delete failed is read back")
+	cacheTestBRequireAccounting(t, probe, entries*size, entries)
+
+	storage.ClearErrs()
+	cacheTestAExpect(t, app, "/big", cacheMiss)
+	cacheTestAExpect(t, app, "/big", cacheHit)
+	require.Less(t, probe.nodes(), entries)
 }
 
 // Test_Cache_MaxBytes_ConcurrencyAndRaceConditions tests that the race condition fix works correctly
@@ -3983,8 +4370,6 @@ func Test_Cache_HelperFunctions(t *testing.T) {
 	pastHeuristicAge := uint64(25 * time.Hour / time.Second)
 	contentType := []cachedHeader{{key: []byte("Content-Type"), value: []byte("text/html")}}
 	authorization := []cachedHeader{{key: []byte("Authorization"), value: []byte("Bearer token")}}
-	mask := func(_ string) string { return "***" }
-	storageErr := errors.New("storage error")
 
 	// Each row holds what a call returned, made as the table is built, and what it should return.
 	for _, tc := range []struct {
@@ -4021,18 +4406,12 @@ func Test_Cache_HelperFunctions(t *testing.T) {
 			got: isHeuristicFreshness(publicExpires, cfg, pastHeuristicAge),
 		},
 		{name: "isHeuristicFreshness true", got: isHeuristicFreshness(public, cfg, pastHeuristicAge), want: true},
-		{name: "cacheBodyFetchError other", got: cacheBodyFetchError(mask, "key", storageErr), want: storageErr},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.want, tc.got)
 		})
 	}
-
-	t.Run("cacheBodyFetchError miss", func(t *testing.T) {
-		t.Parallel()
-		require.ErrorContains(t, cacheBodyFetchError(mask, "key", errCacheMiss), "no cached body")
-	})
 }
 
 // cacheTestBNewApp returns an app that caches under cfg and whose GET /test
@@ -4213,63 +4592,6 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 		{name: "cache control with uppercase directives", cacheControl: "PUBLIC, MAX-AGE=3600", first: cacheMiss, second: cacheHit},
 	})
 
-	t.Run("negative expiration skips caching", func(t *testing.T) {
-		t.Parallel()
-		app := cacheTestBNewApp(&Config{Expiration: -1 * time.Second}, "", nil)
-		rsp := apptest.Do(t, app, "/test")
-		require.NotEqual(t, cacheMiss, rsp.Header.Get("X-Cache"))
-		require.NotEqual(t, cacheHit, rsp.Header.Get("X-Cache"))
-	})
-
-	t.Run("request with no-store directive", func(t *testing.T) {
-		t.Parallel()
-		app := cacheTestBNewApp(&Config{Expiration: 1 * time.Hour}, "", nil)
-		req := apptest.Req(fiber.MethodGet, "/test", apptest.WithHeader("Cache-Control", "no-store"))
-		require.NotEqual(t, cacheMiss, apptest.Do(t, app, req).Header.Get("X-Cache"))
-	})
-
-	t.Run("non-get-head method bypasses cache", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{Expiration: 1 * time.Hour}))
-		app.Post("/test", func(c fiber.Ctx) error { return c.SendString("test") })
-		cacheTestAExpect(t, app, apptest.Req(fiber.MethodPost, "/test"), cacheUnreachable)
-	})
-
-	t.Run("request with min-fresh directive", func(t *testing.T) {
-		t.Parallel()
-		app := cacheTestBNewApp(&Config{Expiration: 1 * time.Hour}, "max-age=60", nil)
-		cacheTestAExpect(t, app, "/test", cacheMiss)
-		req := apptest.Req(fiber.MethodGet, "/test", apptest.WithHeader("Cache-Control", "min-fresh=120"))
-		cacheStatus := apptest.Do(t, app, req).Header.Get("X-Cache")
-		require.Contains(t, []string{cacheMiss, cacheUnreachable}, cacheStatus, "min-fresh requirement should prevent cache hit")
-	})
-
-	t.Run("request with max-stale directive", func(t *testing.T) {
-		t.Parallel()
-		app := cacheTestBNewApp(&Config{Expiration: 1 * time.Second}, "max-age=1", nil)
-		cacheTestAExpect(t, app, "/test", cacheMiss)
-
-		time.Sleep(2 * time.Second)
-
-		req := apptest.Req(fiber.MethodGet, "/test", apptest.WithHeader("Cache-Control", "max-stale=60"))
-		cacheStatus := apptest.Do(t, app, req).Header.Get("X-Cache")
-		require.Contains(t, []string{cacheHit, cacheMiss, "stale"}, cacheStatus, "max-stale should allow stale content or revalidate")
-	})
-
-	t.Run("response with warning header", func(t *testing.T) {
-		t.Parallel()
-		app := cacheTestBNewApp(&Config{Expiration: 1 * time.Second}, "max-age=1", nil)
-		cacheTestAExpect(t, app, "/test", cacheMiss)
-
-		time.Sleep(2 * time.Second)
-
-		rsp := apptest.Do(t, app, "/test")
-		cacheStatus := rsp.Header.Get("X-Cache")
-		warningHeader := rsp.Header.Get("Warning")
-		require.True(t, cacheStatus == cacheMiss || warningHeader != "", "stale response should either revalidate or have warning header")
-	})
-
 	t.Run("external storage with body key", func(t *testing.T) {
 		t.Parallel()
 		storage := storagetest.New()
@@ -4279,13 +4601,6 @@ func Test_Cache_RequestResponseDirectives(t *testing.T) {
 
 		cacheTestAExpect(t, app, "/test", cacheMiss)
 		require.NotEmpty(t, bodyKeys(storage), "the body is stored under a key of its own")
-	})
-
-	t.Run("only-if-cached with cache miss", func(t *testing.T) {
-		t.Parallel()
-		app := cacheTestBNewApp(&Config{Expiration: 1 * time.Hour}, "", nil)
-		req := apptest.Req(fiber.MethodGet, "/test", apptest.WithHeader("Cache-Control", "only-if-cached"))
-		apptest.Expect(t, app, req, fiber.StatusGatewayTimeout)
 	})
 }
 
@@ -4328,30 +4643,6 @@ func Test_Cache_ConfigurationAndResponseHandling(t *testing.T) {
 			name: "revalidation scenario with cache miss", cacheControl: "max-age=3600", first: cacheMiss,
 			reqHeaders: map[string]string{"Cache-Control": "no-cache"},
 		},
-	})
-
-	t.Run("next function prevents caching", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{Expiration: 1 * time.Hour, Next: func(c fiber.Ctx) bool { return c.Path() == "/skip" }}))
-		app.Get("/skip", func(c fiber.Ctx) error { return c.SendString("test") })
-		cacheTestAExpect(t, app, "/skip", cacheUnreachable)
-	})
-
-	t.Run("non-cacheable status code", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{Expiration: 1 * time.Hour}))
-		app.Get("/test", func(c fiber.Ctx) error { return c.Status(fiber.StatusCreated).SendString("created") })
-		cacheTestAExpect(t, app, "/test", cacheUnreachable)
-	})
-
-	t.Run("body larger than MaxBytes", func(t *testing.T) {
-		t.Parallel()
-		app := fiber.New()
-		app.Use(New(Config{Expiration: 1 * time.Hour, MaxBytes: 10}))
-		app.Get("/test", func(c fiber.Ctx) error { return c.Send(make([]byte, 100)) })
-		cacheTestAExpect(t, app, "/test", cacheUnreachable)
 	})
 
 	t.Run("delete vary manifest on no-cache response", func(t *testing.T) {
@@ -4567,11 +4858,11 @@ func Benchmark_hasDirective(b *testing.B) {
 // miss, and the miss stores the fresh response again.
 func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 	t.Parallel()
-	for _, maxBytes := range []uint{0, 4096} {
-		t.Run(fmt.Sprintf("maxbytes-%d", maxBytes), func(t *testing.T) {
+	for _, unlimited := range []bool{true, false} {
+		t.Run(fmt.Sprintf("DisableMaxBytes=%t", unlimited), func(t *testing.T) {
 			t.Parallel()
 			storage := storagetest.New()
-			cfg := Config{Storage: storage, Expiration: time.Hour, MaxBytes: maxBytes}
+			cfg := Config{Storage: storage, Expiration: time.Hour, MaxBytes: 4096, DisableMaxBytes: unlimited}
 			app, _ := cacheTestAOrigin(New(cfg), "response-")
 
 			cacheTestAExpect(t, app, "/", cacheMiss)
@@ -4588,39 +4879,106 @@ func Test_Cache_OrphanedMetadataWithoutBody(t *testing.T) {
 	}
 }
 
+func Test_Cache_OrphanedMetadataKeepsAReplacement(t *testing.T) {
+	t.Parallel()
+	key := defaultKey("/")
+	storage := &hookedStorage{Memory: storagetest.New()}
+	app, _ := cacheTestAOrigin(New(Config{Storage: storage, Expiration: time.Hour}), "response-")
+	cacheTestAExpect(t, app, "/", cacheMiss)
+	storage.Mu.Lock()
+	delete(storage.Data, bodyKey(key))
+	storage.Mu.Unlock()
+
+	// After the lookup misses the body, another request stores a fresh entry before it reaches the Storage again.
+	var (
+		missed, replaced atomic.Bool
+		replacedStatus   int
+		errReplace       error
+	)
+	replace := func(k string) {
+		if k != key || !missed.Load() || !replaced.CompareAndSwap(false, true) {
+			return
+		}
+		resp, err := app.Test(cacheTestAGetCC("/", "no-cache"))
+		if errReplace = err; err == nil {
+			replacedStatus, errReplace = resp.StatusCode, resp.Body.Close()
+		}
+	}
+	storage.onGet = func(k string) error {
+		if k == bodyKey(key) && !storage.Holds(k) {
+			missed.Store(true)
+		}
+		replace(k)
+		return nil
+	}
+	storage.onDelete = func(k string) error { replace(k); return nil }
+
+	// only-if-cached stores no answer of its own, which would replace the entry either way.
+	cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", "only-if-cached"), cacheUnreachable, fiber.StatusGatewayTimeout)
+	require.True(t, replaced.Load())
+	require.NoError(t, errReplace)
+	require.Equal(t, fiber.StatusOK, replacedStatus)
+	cacheTestAExpectBody(t, app, "/", cacheHit, "response-2")
+}
+
+// An entry whose body cannot be fetched is a miss, which only-if-cached answers with 504.
 func Test_Cache_BodyFetchFailure(t *testing.T) {
 	t.Parallel()
-	// prime returns an app whose entry for / is stored in storage, and the key of that entry.
-	prime := func(t *testing.T, storage *storagetest.Memory) (*fiber.App, string) {
-		t.Helper()
-
-		app := fiber.New()
-		app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
-		app.Get("/", func(c fiber.Ctx) error { return c.SendString("cached") })
-		cacheTestAExpect(t, app, "/", cacheMiss)
-		bodies := bodyKeys(storage)
-		require.NotEmpty(t, bodies)
-		return app, cacheKeyVersion + "|" + strings.TrimPrefix(bodies[0], bodyKeyPrefix)
+	key := defaultKey("/")
+	type step struct {
+		cacheControl string // of the request
+		cache        string // X-Cache of the answer
+		body         string // of the answer; none for a 504
 	}
+	onlyIfCached := step{cacheControl: "only-if-cached", cache: cacheUnreachable}
+	replaced := []step{onlyIfCached, {cache: cacheMiss, body: "response-2"}, {cache: cacheHit, body: "response-2"}}
 
-	t.Run("body read fails", func(t *testing.T) {
-		t.Parallel()
-		storage := storagetest.New()
-		app, key := prime(t, storage)
-		storage.SetErr(storagetest.OpGet, bodyKey(key), errors.New("boom"))
-		apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-	})
+	for _, tc := range []struct {
+		name     string
+		failOp   string // the operation the Storage fails
+		failKey  string // on this key
+		steps    []step
+		bodyGone bool // the Storage dropped the body and kept the metadata
+	}{
+		{
+			name: "body read fails", failOp: storagetest.OpGet, failKey: bodyKey(key),
+			// Each answer is stored, and its body cannot be read either.
+			steps: []step{{cache: cacheMiss, body: "response-2"}, onlyIfCached, {cache: cacheMiss, body: "response-3"}},
+		},
+		{name: "body gone", bodyGone: true, steps: replaced},
+		{name: "body gone, metadata delete fails", bodyGone: true, failOp: storagetest.OpDelete, failKey: key, steps: replaced},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			storage := storagetest.New()
+			var failures cacheTestAFailures
+			app := failures.app()
+			app.Use(New(Config{Storage: storage, Expiration: time.Hour}))
+			var calls atomic.Int32
+			app.Get("/", func(c fiber.Ctx) error { return c.SendString("response-" + strconv.Itoa(int(calls.Add(1)))) })
 
-	t.Run("orphaned metadata delete fails", func(t *testing.T) {
-		t.Parallel()
-		storage := storagetest.New()
-		app, key := prime(t, storage)
-		storage.Mu.Lock()
-		delete(storage.Data, bodyKey(key))
-		storage.Mu.Unlock()
-		storage.SetErr(storagetest.OpDelete, key, errors.New("boom"))
-		apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
-	})
+			cacheTestAExpectBody(t, app, "/", cacheMiss, "response-1")
+			if tc.bodyGone {
+				storage.Mu.Lock()
+				delete(storage.Data, bodyKey(key))
+				storage.Mu.Unlock()
+			}
+			if tc.failOp != "" {
+				storage.SetErr(tc.failOp, tc.failKey, errors.New("boom"))
+			}
+
+			for _, s := range tc.steps {
+				before := calls.Load()
+				if s.body == "" {
+					cacheTestAExpectStatus(t, app, cacheTestAGetCC("/", s.cacheControl), s.cache, fiber.StatusGatewayTimeout)
+					require.Equal(t, before, calls.Load(), "only-if-cached must not reach the handler")
+					continue
+				}
+				cacheTestAExpectBody(t, app, "/", s.cache, s.body)
+			}
+			require.NoError(t, failures.err)
+		})
+	}
 }
 
 func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
@@ -4638,7 +4996,7 @@ func Test_Cache_VaryManifestStoreFailureUnreservesSpace(t *testing.T) {
 
 	manifestKey := manifestKeyPrefix + defaultKey("/a")
 	storage.SetErr(storagetest.OpSet, manifestKey, errors.New("boom"))
-	apptest.Expect(t, app, "/a", fiber.StatusInternalServerError)
+	cacheTestAExpectBody(t, app, "/a", cacheUnreachable, body)
 	storage.SetErr(storagetest.OpSet, manifestKey, nil)
 
 	// The abandoned reservation must be gone, or the second entry evicts the first.
@@ -4685,7 +5043,11 @@ func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 				resp := cacheTestAExpectBody(t, app, cacheTestAAcceptLanguage("en"), wantStatus, "page-in:en")
 				// Once, not once per place it is kept: under StoreResponseHeaders
 				// the stored header list must not carry a second copy.
-				require.Equal(t, []string{fiber.HeaderAcceptLanguage}, resp.Header.Values(fiber.HeaderVary), "(%s)", wantStatus)
+				wantVary := fiber.HeaderAcceptLanguage
+				if wantStatus == cacheHit && tc.wantCacheControl != "" {
+					wantVary += ", Accept, Accept-Encoding"
+				}
+				require.Equal(t, []string{wantVary}, resp.Header.Values(fiber.HeaderVary), "(%s)", wantStatus)
 				return resp
 			}
 
@@ -4702,6 +5064,41 @@ func Test_Cache_VaryIsReplayedOnHit(t *testing.T) {
 		})
 	}
 }
+
+// Sequential: testing.AllocsPerRun panics in a parallel test.
+func Test_Cache_HitMergesTheKeyVaryWithoutAllocating(t *testing.T) {
+	hitAllocs := func(cfg Config, wantVary string) int {
+		app := fiber.New()
+		app.Use(New(cfg))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set(fiber.HeaderVary, "Origin")
+			return c.SendString("body")
+		})
+		h := app.Handler()
+		fctx := &fasthttp.RequestCtx{}
+		serve := func() {
+			fctx.Request.Reset()
+			fctx.Response.Reset()
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.Header.SetHost("example.com")
+			fctx.Request.SetRequestURI("/")
+			h(fctx)
+		}
+		serve()
+		serve()
+		require.Equal(t, cacheHit, cacheTestXCache(fctx))
+		require.Equal(t, wantVary, string(fctx.Response.Header.Peek(fiber.HeaderVary)))
+		// The fewest of many single runs: under -race sync.Pool drops items at random, so averages vary.
+		return int(apptest.FewestAllocs(200, 1, serve))
+	}
+
+	merged := hitAllocs(Config{Expiration: time.Hour}, "Origin, "+keyVaryHeaders)
+	unmerged := hitAllocs(Config{Expiration: time.Hour, DisableCacheControl: true}, "Origin")
+	require.Equal(t, unmerged, merged)
+}
+
+// keyVaryHeaders is what a hit names in its Vary for the default KeyHeaders.
+const keyVaryHeaders = "Accept, Accept-Encoding, Accept-Language"
 
 // Test_Cache_CredentialKeyedHitIsPrivate asserts a hit on an entry holding one
 // user's response says so. Such an entry has no Cache-Control of its own in the
@@ -4721,6 +5118,7 @@ func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 		// What the hit must carry: Vary with its field lines joined, and the
 		// exact Cache-Control, which defaults to the private form.
 		wantVary         string
+		wantHitVary      string
 		wantCacheControl string
 		// The Vary field lines the handler sends, and the spelling of the field
 		// name it writes them under, "Vary" when empty.
@@ -4730,27 +5128,45 @@ func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 		// Whether the request carries the session cookie.
 		noCookie bool
 	}{
-		{name: "Vary: Cookie", vary: []string{"Cookie"}, wantVary: "Cookie"},
-		{name: "Vary: cookie in lower case", vary: []string{"cookie"}, wantVary: "cookie"},
-		{name: "Vary: Cookie on a second field line", vary: []string{"Accept-Encoding", "Cookie"}, wantVary: "Accept-Encoding,Cookie"},
-		{name: "Vary: Authorization", vary: []string{"Authorization"}, wantVary: "Authorization"},
-		{name: "Vary: Proxy-Authorization", vary: []string{"Proxy-Authorization"}, wantVary: "Proxy-Authorization"},
-		{name: "Vary: X-API-Key", vary: []string{"X-API-Key"}, wantVary: "X-API-Key"},
-		{name: "KeyCookies", cfg: Config{KeyCookies: []string{"session"}}},
-		{name: "KeyCookies without the cookie on the request", cfg: Config{KeyCookies: []string{"session"}}, noCookie: true},
-		{name: "KeyHeaders naming Cookie", cfg: Config{KeyHeaders: []string{"Cookie"}}},
-		{name: "KeyHeaders naming Authorization", cfg: Config{KeyHeaders: []string{"Authorization"}}},
-		{name: "KeyCredentialHeaders", cfg: Config{KeyCredentialHeaders: []string{"X-Company-Token"}}},
-		{name: "KeyHeaders naming Proxy-Authorization", cfg: Config{KeyHeaders: []string{"Proxy-Authorization"}}},
-		{name: "KeyHeaders naming X-API-Key", cfg: Config{KeyHeaders: []string{"X-API-Key"}}},
-		{name: "KeyHeaders naming X-Auth-Token", cfg: Config{KeyHeaders: []string{"X-Auth-Token"}}},
-		{name: "KeyHeaders naming X-Access-Token", cfg: Config{KeyHeaders: []string{"X-Access-Token"}}},
+		{name: "Vary: Cookie", vary: []string{"Cookie"}, wantVary: "Cookie", wantHitVary: "Cookie, " + keyVaryHeaders},
+		{name: "Vary: cookie in lower case", vary: []string{"cookie"}, wantVary: "cookie", wantHitVary: "cookie, " + keyVaryHeaders},
+		{
+			name: "Vary: Cookie on a second field line", vary: []string{"Accept-Encoding", "Cookie"},
+			wantVary: "Accept-Encoding,Cookie", wantHitVary: "Accept-Encoding,Cookie, Accept, Accept-Language",
+		},
+		{name: "Vary: Authorization", vary: []string{"Authorization"}, wantVary: "Authorization", wantHitVary: "Authorization, " + keyVaryHeaders},
+		{
+			name: "Vary: Proxy-Authorization", vary: []string{"Proxy-Authorization"},
+			wantVary: "Proxy-Authorization", wantHitVary: "Proxy-Authorization, " + keyVaryHeaders,
+		},
+		{name: "Vary: X-API-Key", vary: []string{"X-API-Key"}, wantVary: "X-API-Key", wantHitVary: "X-API-Key, " + keyVaryHeaders},
+		{name: "KeyCookies", cfg: Config{KeyCookies: []string{"session"}}, wantHitVary: keyVaryHeaders + ", Cookie"},
+		{
+			name: "KeyCookies without the cookie on the request", cfg: Config{KeyCookies: []string{"session"}}, noCookie: true,
+			wantHitVary: keyVaryHeaders + ", Cookie",
+		},
+		{name: "KeyHeaders naming Cookie", cfg: Config{KeyHeaders: []string{"Cookie"}}, wantHitVary: "Cookie"},
+		{name: "KeyHeaders naming Authorization", cfg: Config{KeyHeaders: []string{"Authorization"}}, wantHitVary: "Authorization"},
+		{name: "KeyCredentialHeaders", cfg: Config{KeyCredentialHeaders: []string{"X-Company-Token"}}, wantHitVary: keyVaryHeaders + ", X-Company-Token"},
+		{name: "KeyHeaders naming Proxy-Authorization", cfg: Config{KeyHeaders: []string{"Proxy-Authorization"}}, wantHitVary: "Proxy-Authorization"},
+		{name: "KeyHeaders naming X-API-Key", cfg: Config{KeyHeaders: []string{"X-API-Key"}}, wantHitVary: "X-Api-Key"},
+		{name: "KeyHeaders naming X-Auth-Token", cfg: Config{KeyHeaders: []string{"X-Auth-Token"}}, wantHitVary: "X-Auth-Token"},
+		{name: "KeyHeaders naming X-Access-Token", cfg: Config{KeyHeaders: []string{"X-Access-Token"}}, wantHitVary: "X-Access-Token"},
 		// KeyHeaders naming a credential header makes every entry one client's, whatever the generator.
 		{name: "custom KeyGenerator, KeyHeaders naming Cookie, without the cookie on the request", cfg: Config{KeyGenerator: pathKey, KeyHeaders: []string{"Cookie"}}, noCookie: true},
 		{name: "custom KeyGenerator, KeyHeaders naming Authorization", cfg: Config{KeyGenerator: pathKey, KeyHeaders: []string{"Authorization"}}},
-		{name: "DisableVaryHeaders", cfg: Config{DisableVaryHeaders: true}, vary: []string{"Cookie"}, wantVary: "Cookie"},
-		{name: "DisableHeaderNormalizing", appCfg: fiber.Config{DisableHeaderNormalizing: true}, vary: []string{"cookie"}, wantVary: "cookie"},
-		{name: "DisableHeaderNormalizing with the field name in lower case", appCfg: fiber.Config{DisableHeaderNormalizing: true}, vary: []string{"Cookie"}, varyName: "vary", wantVary: "Cookie"},
+		{
+			name: "DisableVaryHeaders", cfg: Config{DisableVaryHeaders: true}, vary: []string{"Cookie"},
+			wantVary: "Cookie", wantHitVary: "Cookie, " + keyVaryHeaders,
+		},
+		{
+			name: "DisableHeaderNormalizing", appCfg: fiber.Config{DisableHeaderNormalizing: true}, vary: []string{"cookie"},
+			wantVary: "cookie", wantHitVary: "cookie, " + keyVaryHeaders,
+		},
+		{
+			name: "DisableHeaderNormalizing with the field name in lower case", appCfg: fiber.Config{DisableHeaderNormalizing: true},
+			vary: []string{"Cookie"}, varyName: "vary", wantVary: "Cookie", wantHitVary: "Cookie, " + keyVaryHeaders,
+		},
 		{
 			name:             "the handler's own Cache-Control is kept",
 			vary:             []string{"Cookie"},
@@ -4788,19 +5204,19 @@ func Test_Cache_CredentialKeyedHitIsPrivate(t *testing.T) {
 			if tc.noCookie {
 				wantBody = "page-for:"
 			}
-			get := func(wantStatus string) *http.Response {
+			get := func(wantStatus, wantVary string) *http.Response {
 				t.Helper()
 				req := httptest.NewRequest(fiber.MethodGet, "/me", http.NoBody)
 				if !tc.noCookie {
 					req.Header.Set(fiber.HeaderCookie, "session=alice")
 				}
 				resp := cacheTestAExpectBody(t, app, req, wantStatus, wantBody)
-				require.Equal(t, tc.wantVary, strings.Join(resp.Header.Values(fiber.HeaderVary), ","), "(%s)", wantStatus)
+				require.Equal(t, wantVary, strings.Join(resp.Header.Values(fiber.HeaderVary), ","), "(%s)", wantStatus)
 				return resp
 			}
 
-			get(cacheMiss)
-			resp := get(cacheHit)
+			get(cacheMiss, tc.wantVary)
+			resp := get(cacheHit, cmp.Or(tc.wantHitVary, tc.wantVary))
 			require.Equal(t, wantCacheControl, resp.Header.Get(fiber.HeaderCacheControl))
 		})
 	}
@@ -4867,11 +5283,12 @@ func Test_Cache_VaryReplayedWithCompress(t *testing.T) {
 	app.Use(compress.New())
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString(strings.Repeat("compressible ", 256)) })
 
-	for _, want := range []string{cacheMiss, cacheHit} {
+	for _, step := range [][2]string{{cacheMiss, "Accept-Encoding"}, {cacheHit, "Accept-Encoding, Accept, Accept-Language"}} {
+		want, vary := step[0], step[1]
 		req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderAcceptEncoding, "gzip"))
 		resp := cacheTestAExpect(t, app, req, want)
 		require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding), "(%s)", want)
-		require.Equal(t, []string{fiber.HeaderAcceptEncoding}, resp.Header.Values(fiber.HeaderVary), "(%s)", want)
+		require.Equal(t, []string{vary}, resp.Header.Values(fiber.HeaderVary), "(%s)", want)
 	}
 }
 
@@ -4971,7 +5388,11 @@ func Test_Cache_VaryLongerThanEntryLimitIsUncacheable(t *testing.T) {
 				}
 				body := apptest.Body(t, resp)
 				require.Equal(t, "body", body, "request %d", i+1)
-				require.Equal(t, []string{vary}, resp.Header.Values(fiber.HeaderVary), "request %d", i+1)
+				wantVary := vary
+				if want == cacheHit {
+					wantVary += ", Accept, Accept-Encoding, Accept-Language"
+				}
+				require.Equal(t, []string{wantVary}, resp.Header.Values(fiber.HeaderVary), "request %d", i+1)
 			}
 		})
 	}
@@ -5115,7 +5536,7 @@ func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
 
 			get := func(value string) string {
 				t.Helper()
-				return getRoot(t, app, map[string]string{tc.header: value}).cache
+				return cacheTestCGet(t, app, "/", tc.header, value).cache
 			}
 
 			// The credential still tells entries apart.
@@ -5138,9 +5559,9 @@ func Test_Cache_CredentialHeadersAreHashedInTheKey(t *testing.T) {
 // that sends one of the headers is private and not served stale. One that sends none finds the shared entry.
 func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 	t.Parallel()
-	token := map[string]string{"X-Company-Token": "t"}
+	token := []string{"X-Company-Token", "t"}
 	tests := []struct {
-		headers    map[string]string
+		headers    []string
 		name       string
 		keyHeaders []string
 		declared   bool
@@ -5164,9 +5585,9 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 			cfg.KeyHeaders = tc.keyHeaders
 			app, calls := cacheTestAOrigin(New(cfg), "")
 
-			require.Equal(t, cacheMiss, getRoot(t, app, tc.headers).cache)
+			require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/", tc.headers...).cache)
 
-			hit := getRoot(t, app, tc.headers)
+			hit := cacheTestCGet(t, app, "/", tc.headers...)
 			require.Equal(t, cacheHit, hit.cache)
 			wantCacheControl := "public, max-age=60"
 			if tc.private {
@@ -5176,9 +5597,7 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 
 			// Past the entry's lifetime, well inside what the storage keeps.
 			clock.Add(2 * time.Minute)
-			headers := map[string]string{fiber.HeaderCacheControl: "max-stale"}
-			maps.Copy(headers, tc.headers)
-			got := getRoot(t, app, headers)
+			got := cacheTestCGet(t, app, "/", append([]string{fiber.HeaderCacheControl, "max-stale"}, tc.headers...)...)
 			if tc.private {
 				require.Equal(t, int32(2), calls.Load(), "an entry holding a credential's response was served stale")
 				return
@@ -5186,6 +5605,96 @@ func Test_Cache_KeyCredentialHeadersWithCustomKeyGenerator(t *testing.T) {
 			require.Equal(t, cacheHit, got.cache)
 			require.Equal(t, int32(1), calls.Load())
 		})
+	}
+}
+
+func Test_configDefault_MaxBytes(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, ConfigDefault.MaxBytes, configDefault().MaxBytes)
+	for _, tc := range []struct {
+		name string
+		cfg  Config
+		want uint
+	}{
+		{name: "unset", cfg: Config{}, want: ConfigDefault.MaxBytes},
+		{name: "unset beside other settings", cfg: Config{Expiration: time.Hour, StoreResponseHeaders: true}, want: ConfigDefault.MaxBytes},
+		{name: "set", cfg: Config{MaxBytes: 5}, want: 5},
+		{name: "disabled", cfg: Config{DisableMaxBytes: true}, want: 0},
+		{name: "disabled wins over a limit", cfg: Config{DisableMaxBytes: true, MaxBytes: 5}, want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, configDefault(tc.cfg).MaxBytes)
+		})
+	}
+}
+
+// conventions:ignore parallel: it sets ConfigDefault, which every test that calls New() without a Config reads
+func Test_configDefault_DisableMaxBytesWithoutAConfig(t *testing.T) {
+	saved := ConfigDefault
+	t.Cleanup(func() { ConfigDefault = saved })
+	ConfigDefault.DisableMaxBytes = true
+	require.Zero(t, configDefault().MaxBytes)
+	require.Zero(t, configDefault(ConfigDefault).MaxBytes)
+}
+
+func Test_Cache_MaxBytes_DefaultAppliesToAConfig(t *testing.T) {
+	t.Parallel()
+	third := ConfigDefault.MaxBytes / 3
+	large := filepath.Join(t.TempDir(), "large.bin")
+	require.NoError(t, os.WriteFile(large, make([]byte, 2*ConfigDefault.MaxBytes), 0o600))
+
+	for _, kind := range storageKinds {
+		for _, tc := range []struct {
+			name   string
+			beyond string // the X-Cache of a response past the default limit, as a body and as a stream
+			cfg    Config
+			held   int // how many of four responses of a third of the default limit stay stored
+		}{
+			{name: "unset", cfg: Config{Expiration: time.Hour}, held: 2, beyond: cacheUnreachable},
+			{name: "disabled", cfg: Config{Expiration: time.Hour, DisableMaxBytes: true}, held: 4, beyond: cacheMiss},
+		} {
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				cfg := tc.cfg
+				cfg.Storage = storageOf(kind)
+				app := fiber.New()
+				app.Use(New(cfg))
+				app.Get("/page/:n", func(c fiber.Ctx) error { return c.Send(make([]byte, third)) })
+				app.Get("/body", func(c fiber.Ctx) error { return c.Send(make([]byte, 2*ConfigDefault.MaxBytes)) })
+				app.Get("/stream", func(c fiber.Ctx) error { return c.SendFile(large) })
+				var withdrawn atomic.Int32
+				app.Get("/withdrawn", func(c fiber.Ctx) error {
+					if withdrawn.Add(1) == 2 {
+						c.Set(fiber.HeaderCacheControl, "no-store")
+					}
+					return c.SendString("page")
+				})
+
+				for n := range 4 {
+					cacheTestAExpect(t, app, "/page/"+strconv.Itoa(n), cacheMiss)
+				}
+				held := 0
+				for n := range 4 {
+					// only-if-cached asks without storing, so the count is of what the stores left.
+					resp := apptest.Do(t, app, cacheTestCReq("/page/"+strconv.Itoa(n), fiber.HeaderCacheControl, "only-if-cached"))
+					if resp.StatusCode == fiber.StatusOK {
+						held++
+					}
+					apptest.BodyBytes(t, resp)
+				}
+				require.Equal(t, tc.held, held)
+
+				for _, target := range []string{"/body", "/stream"} {
+					cacheTestAExpect(t, app, target, tc.beyond)
+				}
+				cacheTestAExpect(t, app, cacheTestCReq("/page/0", fiber.HeaderCacheControl, "no-cache"), cacheMiss)
+				cacheTestAExpect(t, app, "/page/0", cacheHit)
+				cacheTestAExpect(t, app, "/withdrawn", cacheMiss)
+				cacheTestAExpect(t, app, cacheTestCReq("/withdrawn", fiber.HeaderCacheControl, "no-cache"), cacheUnreachable)
+				cacheTestAExpect(t, app, "/withdrawn", cacheMiss)
+			})
+		}
 	}
 }
 
@@ -5358,4 +5867,27 @@ func Test_Cache_StoreResponseHeadersLeavesOutOuterMiddleware(t *testing.T) {
 		require.Equal(t, "inner", got.header.Get("X-Theme"))
 		require.Equal(t, []string{"outer", "inner"}, got.header.Values("X-Trace"))
 	}
+}
+
+// A header that restricts the body is stored whoever wrote it, middleware before the cache too: a hit sends the
+// body with the policy it was built under, here the nonce of its scripts, while the other outer lines are the
+// hit's own.
+func Test_Cache_StoreResponseHeadersKeepsOuterLinesThatRestrictTheBody(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		n := strconv.Itoa(int(requests.Add(1)))
+		c.Set(fiber.HeaderContentSecurityPolicy, "script-src 'nonce-"+n+"'")
+		c.Set("X-Trace", "outer-"+n)
+		return c.Next()
+	})
+	app.Use(New(Config{StoreResponseHeaders: true}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("<script nonce=1>") })
+
+	require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
+	hit := cacheTestCGet(t, app, "/")
+	require.Equal(t, cacheHit, hit.cache)
+	require.Equal(t, "script-src 'nonce-1'", hit.header.Get(fiber.HeaderContentSecurityPolicy))
+	require.Equal(t, "outer-2", hit.header.Get("X-Trace"))
 }

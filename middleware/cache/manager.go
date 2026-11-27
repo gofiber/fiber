@@ -28,6 +28,7 @@ type item struct {
 	etag            []byte         `msg:",limit=256"`  // ETags are small tokens/quoted strings.
 	vary            []byte         `msg:",limit=2048"` // Vary lists field names, bounded like Cache-Control.
 	date            uint64
+	stored          uint64 // when the storing request began (purgeTable clock, ns); zero from an earlier version
 	status          int
 	age             uint64
 	exp             uint64
@@ -99,6 +100,8 @@ type manager struct {
 
 var errCacheMiss = errors.New("cache: miss")
 
+var errUndecodable = errors.New("cache: failed to unmarshal key")
+
 func newManager(storage fiber.Storage, shouldRedactKeys bool) *manager {
 	// Create new storage handler
 	manager := &manager{
@@ -144,6 +147,7 @@ func (m *manager) release(e *item) {
 	e.ctype = nil
 	e.cencoding = nil
 	e.date = 0
+	e.stored = 0
 	e.status = 0
 	e.age = 0
 	e.exp = 0
@@ -172,7 +176,7 @@ func (m *manager) get(ctx context.Context, key string) (*item, error) {
 		it := m.acquire()
 		if _, err := it.UnmarshalMsg(raw); err != nil {
 			m.release(it)
-			return nil, fmt.Errorf("cache: failed to unmarshal key %q: %w", m.logKey(key), err)
+			return nil, fmt.Errorf("%w %q: %w", errUndecodable, m.logKey(key), err)
 		}
 
 		return it, nil

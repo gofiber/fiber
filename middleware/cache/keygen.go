@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"slices"
@@ -72,6 +73,35 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 
 // appendDefaultKey appends the default generator's key to dst.
 func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
+	dst = appendURLKey(dst, c)
+	query := c.Request().URI().QueryString()
+	dst = appendQueryKey(dst, query, cfg)
+	dst = appendTargetAsSent(dst, c.Request().Header.RequestURI(), c.Path(), query, cfg)
+
+	normalized := headerlookup.Canonical(c)
+	dst = appendFieldsKey(dst, c, cfg, normalized)
+	// The body: for a QUERY (RFC 10008), any request with one, and a Content-Encoding c.Body() may answer with 501.
+	if body, held := bodySegment(c, normalized); held {
+		dst = appendBodyKey(dst, &c.Request().Header, body, normalized)
+	}
+	return dst
+}
+
+// appendRecordKey keys a refusal record like the response key, less what this key adds to main's: the spelling
+// of the target beyond its path and query, and every body but a QUERY's. A record reaches the entries those tell apart.
+func appendRecordKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
+	dst = appendURLKey(dst, c)
+	dst = appendQueryKey(dst, c.Request().URI().QueryString(), cfg)
+	normalized := headerlookup.Canonical(c)
+	dst = appendFieldsKey(dst, c, cfg, normalized)
+	if c.Method() == fiber.MethodQuery {
+		body, _ := bodySegment(c, normalized)
+		dst = appendBodyKey(dst, &c.Request().Header, body, normalized)
+	}
+	return dst
+}
+
+func appendURLKey(dst []byte, c fiber.Ctx) []byte {
 	// The target URI, not only its path: a cache key is composed of the request
 	// method and the target URI at a minimum (RFC 9111 §2), and the target URI
 	// carries the scheme and the authority. Keyed on the path alone, two hosts
@@ -95,39 +125,90 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	dst = append(dst, '|')
 
 	// Escape delimiters in path to prevent crafted paths from injecting key structure
-	dst = appendEscapedBoundKeySegment(dst, c.Path())
+	return appendEscapedBoundKeySegment(dst, c.Path())
+}
 
-	if !cfg.DisableQueryKeys {
-		// As sent, not parsed and sorted: Bind and a proxied upstream read some spellings, orders and empty
-		// pairs as different requests.
-		dst = append(dst, '|', 'q', '=')
-		dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(c.Request().URI().QueryString()))
-	}
-
+func appendFieldsKey(dst []byte, c fiber.Ctx, cfg *Config, normalized bool) []byte { //nolint:revive // flag-parameter: normalized is a property of the header store
 	if len(cfg.KeyHeaders) > 0 {
 		dst = append(dst, '|', 'h', '=')
-		dst = appendCanonicalHeaderSubset(dst, &c.Request().Header, cfg.KeyHeaders, cfg.credentialKeyHeaders, headerlookup.Canonical(c))
+		dst = appendCanonicalHeaderSubset(dst, &c.Request().Header, cfg.KeyHeaders, cfg.credentialKeyHeaders, normalized)
 	}
-
 	if len(cfg.KeyCookies) > 0 {
 		dst = append(dst, '|', 'c', '=')
 		dst = appendCanonicalCookieSubset(dst, c, cfg)
 	}
+	return dst
+}
 
-	if c.Method() == fiber.MethodQuery {
-		// RFC 10008: incorporate the request body so different QUERY bodies on the
-		// same URL get distinct keys, and the fields that say how it is decoded.
-		// Unnamed, as their order is fixed: the names would lengthen every QUERY key.
-		normalized := headerlookup.Canonical(c)
-		dst = append(dst, '|', 'm', '=')
-		dst = appendKeyFieldLines(dst, &c.Request().Header, "content-encoding", nil, normalized)
-		dst = append(dst, '|')
-		dst = appendKeyFieldLines(dst, &c.Request().Header, "content-type", nil, normalized)
-		dst = append(dst, '|', 'b', '=')
-		dst = appendQueryBodySegment(dst, c.Request().Body())
+// appendBodyKey appends the body and the fields that say how it is decoded, unnamed as their order is fixed.
+func appendBodyKey(dst []byte, header *fasthttp.RequestHeader, body []byte, normalized bool) []byte { //nolint:revive // flag-parameter: normalized is a property of the header store
+	dst = append(dst, '|', 'm', '=')
+	dst = appendKeyFieldLines(dst, header, "content-encoding", nil, normalized)
+	dst = append(dst, '|')
+	dst = appendKeyFieldLines(dst, header, "content-type", nil, normalized)
+	dst = append(dst, '|', 'b', '=')
+	return appendQueryBodySegment(dst, body)
+}
+
+// bodySegment returns the body and whether the key holds it, leaving unread a stream that declares none.
+func bodySegment(c fiber.Ctx, normalized bool) ([]byte, bool) { //nolint:revive // flag-parameter: normalized is a property of the header store
+	var body []byte
+	if req := c.Request(); !req.IsBodyStream() || req.Header.ContentLength() > 0 {
+		body = req.Body()
+	}
+	// A Content-Encoding with no body counts, as c.Body() answers by it, but not on a GET or HEAD: what such a
+	// request's handler leaves is never stored, so a hit can serve it what its key selects.
+	method := c.Method()
+	return body, len(body) > 0 || method == fiber.MethodQuery ||
+		(method != fiber.MethodGet && method != fiber.MethodHead && namesContentEncoding(&c.Request().Header, normalized))
+}
+
+// preParsedMultipart reports whether fasthttp parsed the multipart form while reading it, keeping no copy of the body.
+func preParsedMultipart(c fiber.Ctx) bool {
+	req := c.Request()
+	return req.Header.ContentLength() > 0 && !req.IsBodyStream() && !c.App().Server().DisablePreParseMultipartForm &&
+		len(req.Header.MultipartFormBoundary()) > 0 && len(req.Header.Peek(fiber.HeaderContentEncoding)) == 0
+}
+
+func namesContentEncoding(header *fasthttp.RequestHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
+	if normalized && header.ContentEncoding() == nil {
+		return false
+	}
+	return len(keyFieldLines(header, "content-encoding", normalized)) > 0
+}
+
+// appendTargetAsSent keys what the raw target, which a handler can read, holds beyond the routed path and
+// query: under "|p=" a differing target, "|f=" a fragment, "|n=" a target with no "?" given a query.
+func appendTargetAsSent(dst, target []byte, path string, keyed []byte, cfg *Config) []byte {
+	sent, fragment, hasFragment := utils.CutByte(target, '#')
+	before, query, hasQuery := utils.CutByte(sent, '?')
+	if hasQuery && (cfg.DisableQueryKeys || (len(query) > 0 && bytes.Equal(query, keyed))) {
+		sent = before
 	}
 
+	switch {
+	case !hasQuery && len(keyed) > 0 && !cfg.DisableQueryKeys:
+		dst = append(dst, '|', 'n', '=')
+		dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(sent))
+	case string(sent) != path:
+		dst = append(dst, '|', 'p', '=')
+		dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(sent))
+	}
+	if hasFragment {
+		dst = append(dst, '|', 'f', '=')
+		dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(fragment))
+	}
 	return dst
+}
+
+// appendQueryKey appends the query as sent, not parsed and sorted: Bind and a proxied upstream read some
+// spellings, orders and empty pairs as different requests.
+func appendQueryKey(dst, query []byte, cfg *Config) []byte {
+	if cfg.DisableQueryKeys {
+		return dst
+	}
+	dst = append(dst, '|', 'q', '=')
+	return appendEscapedBoundKeySegment(dst, utils.UnsafeString(query))
 }
 
 // appendCanonicalHeaderSubset appends the named request headers, hashing the values of credentials.

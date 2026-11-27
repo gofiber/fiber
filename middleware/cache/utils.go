@@ -5,8 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
-	"fmt"
 	"math"
 	"math/bits"
 	"strings"
@@ -21,13 +19,6 @@ import (
 	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 )
-
-func cacheBodyFetchError(mask func(string) string, key string, err error) error {
-	if errors.Is(err, errCacheMiss) {
-		return fmt.Errorf("cache: no cached body for key %q: %w", mask(key), err)
-	}
-	return err
-}
 
 func cachedResponseAge(e *item, now uint64) uint64 {
 	clampedDate := clampDateSeconds(e.date, now)
@@ -280,6 +271,52 @@ func isIgnoredHeader(key []byte) bool {
 	}
 
 	_, ok := ignoredHeaderNames[string(lower)]
+	return ok
+}
+
+// entryFields are the response fields an entry keeps apart from its other headers.
+var entryFields = []string{
+	fiber.HeaderCacheControl, fiber.HeaderContentEncoding, fiber.HeaderContentType,
+	fiber.HeaderETag, fiber.HeaderExpires, fiber.HeaderVary,
+}
+
+// namesEntryField reports whether a Connection value names one of entryFields.
+func namesEntryField(connection string) bool {
+	for name := range headerlist.All(connection) {
+		if fieldname.ContainsFold(entryFields, name) {
+			return true
+		}
+	}
+	return false
+}
+
+var keptHeaderNames = func() map[string]struct{} {
+	folded := make(map[string]struct{}, len(keptHeaders))
+	for name := range keptHeaders {
+		folded[strings.ToLower(name)] = struct{}{}
+	}
+	return folded
+}()
+
+// maxKeptHeaderLen is the longest name in keptHeaderNames.
+const maxKeptHeaderLen = 40
+
+func isKeptHeader(key []byte) bool {
+	if len(key) > maxKeptHeaderLen {
+		return false
+	}
+
+	var buf [maxKeptHeaderLen]byte
+	lower := buf[:len(key)]
+	for i := range key {
+		c := key[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		lower[i] = c
+	}
+
+	_, ok := keptHeaderNames[string(lower)]
 	return ok
 }
 

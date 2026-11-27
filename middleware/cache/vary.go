@@ -7,11 +7,14 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlist"
 	"github.com/gofiber/utils/v2"
 	utilsstrings "github.com/gofiber/utils/v2/strings"
@@ -142,6 +145,48 @@ func varyKey(base string, names []string, hdr *fasthttp.RequestHeader, normalize
 func varyHeadersChanged(names []string, lookup, live *fasthttp.RequestHeader, normalized bool) bool { //nolint:revive // flag-parameter: normalized is a property of the header store
 	var atLookup, now [len("|vary|") + 2*sha256.Size]byte
 	return !bytes.Equal(appendVaryKey(atLookup[:0], names, lookup, normalized), appendVaryKey(now[:0], names, live, normalized))
+}
+
+// keyVaryFields returns the request headers the key splits by, leaving out Authorization, whose entries
+// keep a Cache-Control of their own; with body, Content-Encoding and Content-Type too.
+func (cfg *Config) keyVaryFields(body bool) []string { //nolint:revive // flag-parameter: the two lists differ by the key segment it names
+	names := cfg.KeyCredentialHeaders
+	if cfg.usesDefaultKeyGenerator {
+		names = cfg.KeyHeaders
+		if len(cfg.KeyCookies) > 0 {
+			names = append(slices.Clone(names), fiber.HeaderCookie)
+		}
+		if body {
+			names = append(slices.Clone(names), fiber.HeaderContentEncoding, fiber.HeaderContentType)
+		}
+	}
+	var fields []string
+	for _, name := range names {
+		if !fieldname.ContainsFold(fields, name) {
+			fields = append(fields, utils.CanonicalHeaderKey(name))
+		}
+	}
+	return fields
+}
+
+func appendMissingFields(dst, list []byte, names []string) ([]byte, bool) {
+	existing := utils.UnsafeString(list)
+	if headerlist.Contains(existing, "*") {
+		return dst, false
+	}
+	dst = append(dst, list...)
+	added := false
+	for _, name := range names {
+		if headerlist.ContainsFold(existing, name) {
+			continue
+		}
+		if len(dst) > 0 {
+			dst = append(dst, ", "...)
+		}
+		dst = append(dst, name...)
+		added = true
+	}
+	return dst, added
 }
 
 // lookupHeaders pools the copies of the request headers a miss keeps while the handler runs.
