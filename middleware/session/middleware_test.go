@@ -1294,6 +1294,39 @@ func Test_Session_Middleware_UnsavedSessionIsNotCached(t *testing.T) {
 	require.Equal(t, "hello <nil>", apptest.Body(t, second))
 }
 
+// A destroy that fails sends no cookie, and the middleware does not save a destroyed session: the
+// response is marked instead, so the cache in front does not hand the page to other clients.
+func Test_Session_Middleware_FailedDestroyIsNotCached(t *testing.T) {
+	t.Parallel()
+	errBoom := errors.New("boom")
+	mem := storagetest.New()
+	sessHandler, store := NewWithStore(Config{Storage: mem})
+	destroyed := make(chan error, 1)
+	app := fiber.New()
+	app.Use(cache.New())
+	app.Use(sessHandler)
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		user := sess.Get("user")
+		if user != nil {
+			mem.SetErr(storagetest.OpDelete, "*", errBoom)
+			destroyed <- sess.Destroy()
+		}
+		return c.SendString(fmt.Sprint("hello ", user))
+	})
+	id := seedSession(t, app, store, func(sess *Session) { sess.Set("user", "alice") })
+
+	first := apptest.Do(t, app, apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, "session_id="+id)))
+	require.ErrorIs(t, apptest.Recv(t, destroyed, 5*time.Second), errBoom)
+	require.Equal(t, "hello alice", apptest.Body(t, first))
+	require.Empty(t, first.Cookies())
+
+	mem.ClearErrs()
+	second := apptest.Do(t, app, "/")
+	require.NotEqual(t, "hit", second.Header.Get("X-Cache"))
+	require.Equal(t, "hello <nil>", apptest.Body(t, second))
+}
+
 // The header sinks of a store are the names it marks as one client's.
 func Test_Session_Store_MarksOnlyItsHeaderSinks(t *testing.T) {
 	t.Parallel()

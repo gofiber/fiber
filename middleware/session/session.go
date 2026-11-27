@@ -235,12 +235,15 @@ func (s *Session) DestroyWithContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	// The record the session took the place of goes first: a storage that fails there
-	// fails the call before the session's own record is touched.
+	// fails the call before the session's own record is touched. A destroy that fails
+	// sends no cookie, and the middleware saves no destroyed session: mark the response.
 	if err := s.deleteUnreadable(ctx); err != nil {
+		s.markPersonal()
 		return err
 	}
 	// Use external Storage if exist
 	if err := s.config.deleteKey(ctx, s.storageKey()); err != nil {
+		s.markPersonal()
 		return err
 	}
 
