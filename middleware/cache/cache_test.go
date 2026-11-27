@@ -5868,3 +5868,26 @@ func Test_Cache_StoreResponseHeadersLeavesOutOuterMiddleware(t *testing.T) {
 		require.Equal(t, []string{"outer", "inner"}, got.header.Values("X-Trace"))
 	}
 }
+
+// A header that restricts the body is stored whoever wrote it, middleware before the cache too: a hit sends the
+// body with the policy it was built under, here the nonce of its scripts, while the other outer lines are the
+// hit's own.
+func Test_Cache_StoreResponseHeadersKeepsOuterLinesThatRestrictTheBody(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		n := strconv.Itoa(int(requests.Add(1)))
+		c.Set(fiber.HeaderContentSecurityPolicy, "script-src 'nonce-"+n+"'")
+		c.Set("X-Trace", "outer-"+n)
+		return c.Next()
+	})
+	app.Use(New(Config{StoreResponseHeaders: true}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("<script nonce=1>") })
+
+	require.Equal(t, cacheMiss, cacheTestCGet(t, app, "/").cache)
+	hit := cacheTestCGet(t, app, "/")
+	require.Equal(t, cacheHit, hit.cache)
+	require.Equal(t, "script-src 'nonce-1'", hit.header.Get(fiber.HeaderContentSecurityPolicy))
+	require.Equal(t, "outer-2", hit.header.Get("X-Trace"))
+}

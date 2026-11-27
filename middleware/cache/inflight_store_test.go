@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -310,51 +311,56 @@ func (s skipEmptySetStorage) SetWithContext(ctx context.Context, key string, val
 func Test_CacheStorage_HitServesNoBodyOfAnotherStore(t *testing.T) {
 	t.Parallel()
 	key := defaultKey("/")
+	// With and without MaxBytes: an entry carries its generation either way.
+	for _, unlimited := range []bool{false, true} {
+		suffix := "/unlimited=" + strconv.FormatBool(unlimited)
+		t.Run("metadata of one store, body of another"+suffix, func(t *testing.T) {
+			t.Parallel()
+			storage := storagetest.New()
+			var calls atomic.Int32
+			app := fiber.New()
+			app.Use(New(Config{Storage: storage, DisableMaxBytes: unlimited}))
+			app.Get("/", func(c fiber.Ctx) error {
+				if calls.Add(1) == 2 {
+					c.Type("html")
+					return c.SendString("<script>")
+				}
+				return c.SendString("text")
+			})
 
-	t.Run("metadata of one store, body of another", func(t *testing.T) {
-		t.Parallel()
-		storage := storagetest.New()
-		var calls atomic.Int32
-		app := fiber.New()
-		app.Use(New(Config{Storage: storage}))
-		app.Get("/", func(c fiber.Ctx) error {
-			if calls.Add(1) == 2 {
-				c.Type("html")
-				return c.SendString("<script>")
-			}
-			return c.SendString("text")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "text")
+			storage.Mu.RLock()
+			first := storage.Data[key]
+			storage.Mu.RUnlock()
+			require.NotEmpty(t, first)
+			revalidated := cacheTestCGet(t, app, "/", fiber.HeaderCacheControl, "no-cache")
+			cacheTestCRequireReply(t, revalidated, cacheMiss, "<script>")
+			storage.Mu.Lock()
+			storage.Data[key] = first
+			storage.Mu.Unlock()
+
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "text")
 		})
 
-		cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "text")
-		storage.Mu.RLock()
-		first := storage.Data[key]
-		storage.Mu.RUnlock()
-		require.NotEmpty(t, first)
-		cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", fiber.HeaderCacheControl, "no-cache"), cacheMiss, "<script>")
-		storage.Mu.Lock()
-		storage.Data[key] = first
-		storage.Mu.Unlock()
+		t.Run("bodiless replacement"+suffix, func(t *testing.T) {
+			t.Parallel()
+			var moved atomic.Bool
+			app := fiber.New()
+			app.Use(New(Config{Storage: skipEmptySetStorage{storagetest.New()}, DisableMaxBytes: unlimited}))
+			app.Get("/", func(c fiber.Ctx) error {
+				if moved.Load() {
+					return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
+				}
+				return c.SendString("page")
+			})
 
-		cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "text")
-	})
-
-	t.Run("bodiless replacement", func(t *testing.T) {
-		t.Parallel()
-		var moved atomic.Bool
-		app := fiber.New()
-		app.Use(New(Config{Storage: skipEmptySetStorage{storagetest.New()}}))
-		app.Get("/", func(c fiber.Ctx) error {
-			if moved.Load() {
-				return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
-			}
-			return c.SendString("page")
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "page")
+			moved.Store(true)
+			redirect := cacheTestCGet(t, app, "/", fiber.HeaderCacheControl, "no-cache")
+			require.Equal(t, fiber.StatusMovedPermanently, redirect.status)
+			got := cacheTestCGet(t, app, "/")
+			require.Equal(t, fiber.StatusMovedPermanently, got.status)
+			require.NotEqual(t, "page", got.body)
 		})
-
-		cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "page")
-		moved.Store(true)
-		require.Equal(t, fiber.StatusMovedPermanently, cacheTestCGet(t, app, "/", fiber.HeaderCacheControl, "no-cache").status)
-		got := cacheTestCGet(t, app, "/")
-		require.Equal(t, fiber.StatusMovedPermanently, got.status)
-		require.NotEqual(t, "page", got.body)
-	})
+	}
 }
