@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -35,13 +36,19 @@ func Test_JoinUpstreamPath_QueryMerge(t *testing.T) {
 		require.Equal(t, "http://upstream.example/api/items?filter=active", joinUpstreamPathWithPolicy(baseWithQuery, "/items?filter=active", true))
 		require.Equal(t, "http://upstream.example/api/%25zz", joinUpstreamPathWithPolicy(baseWithQuery, "/%zz", true))
 		require.Equal(t, "http://upstream.example/api/items?filter=active", joinUpstreamPathWithPolicy(baseWithoutQuery, "/items?filter=active", true))
+
+		withMarker, err := url.Parse("http://upstream.example/api?")
+		require.NoError(t, err)
+		require.Equal(t, "http://upstream.example/api/items?", joinUpstreamPathWithPolicy(withMarker, "/items", true))
+		require.Equal(t, "http://upstream.example/api/items?", joinUpstreamPathWithPolicy(withMarker, "/items?", true))
+		require.Equal(t, "http://upstream.example/api/%25zz?", joinUpstreamPathWithPolicy(withMarker, "/%zz", true))
 	})
 }
 
 // conventions:ignore parallel: mutates package-global security policy via WithSecurityPolicy
 func Test_DomainForward_UpstreamQueryMerge(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(r.URL.RequestURI()))
+		fmt.Fprint(w, r.URL.RequestURI())
 	}))
 	t.Cleanup(upstream.Close)
 
@@ -96,7 +103,7 @@ func Test_DomainForward_UpstreamQueryMerge(t *testing.T) {
 // conventions:ignore parallel: mutates package-global security policy via WithSecurityPolicy
 func Test_BalancerForward_UpstreamQueryMerge(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(r.URL.RequestURI()))
+		fmt.Fprint(w, r.URL.RequestURI())
 	}))
 	t.Cleanup(upstream.Close)
 
