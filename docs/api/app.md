@@ -175,6 +175,8 @@ type Register interface {
     Add(methods []string, handler any, handlers ...any) Register
 
     RouteChain(path string) Register
+
+    Name(name string) Register
 }
 ```
 
@@ -554,6 +556,8 @@ This method retrieves a route by its name.
 
 The returned `Route` can be inspected or used to generate a URL directly with `route.URL(params)`. When no route has that name, `GetRoute` returns the zero `Route`, and its `URL` method returns `ErrNotFound`.
 
+The `Route` is a copy, so it is safe to call while routes are being registered and changing its fields never changes the app. `Handlers` and `Params` still share their backing arrays with the app, and the values stored with [`Annotate`](#annotate) are shared with every copy, so do not modify them. Names are looked up in an index that is rebuilt, under the router lock, the first time it is used after the route table changes; every other lookup takes no lock and costs one map read (or a scan of a handful of names) however many routes the app has. Code that only builds a URL by name should call `c.GetRouteURL` or `c.Redirect().Route`, which read the route without copying it.
+
 ```go title="Signature"
 func (app *App) GetRoute(name string) Route
 ```
@@ -638,6 +642,8 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route
 
 When `filterUseOption` is set to `true`, it filters out routes registered by middleware.
 
+Like [`GetRoute`](#getroute), every returned `Route` is a copy taken under the router lock.
+
 ```go title="Example"
 package main
 
@@ -680,6 +686,57 @@ func main() {
 ```
 
 </details>
+
+### Annotate
+
+`Annotate` lets a package keep its own metadata on a route, the way the [OpenAPI middleware](../middleware/openapi.md) stores what `openapi.Doc` documents. It replaces the value stored under `key` on the routes of the latest registration of the router it is called on — the `App`, a `Group`, a `RouteChain` or a `Domain` router — with `update(current)`, where `current` is the value stored before, or `nil`. Like `Name`, it does nothing before that router's first registration. `Route.Annotation` returns the value stored under a key, or `nil`.
+
+```go title="Signature"
+func (app *App) Annotate(key any, update func(current any) any)
+func (grp *Group) Annotate(key any, update func(current any) any)
+func (r *Registering) Annotate(key any, update func(current any) any)
+func (r *Route) Annotation(key any) any
+```
+
+The domain router returned by [`Domain`](#domain) has the same `Annotate` method. It is not part of the `Router` or `Register` interfaces, so call it on the concrete value a registration returns, or assert an interface that has it.
+
+A stored value is shared by every copy of the route — the ones `GetRoute` and `GetRoutes` return, the snapshots hooks receive and the copies of a mounted app's routes — so it must never be modified in place: `update` builds a new value from `current` and returns it. Use an unexported key type, so the keys of two packages cannot clash:
+
+```go title="Example"
+type ownerKey struct{}
+
+app.Get("/users", listUsers)
+app.Annotate(ownerKey{}, func(current any) any { return "team-users" })
+
+for _, route := range app.GetRoutes(true) {
+    if owner, ok := route.Annotation(ownerKey{}).(string); ok {
+        log.Println(route.Path, owner)
+    }
+}
+```
+
+To document a route for OpenAPI, wrap its registration in `openapi.Doc`; see [Document a route](../middleware/openapi.md#document-a-route).
+
+### Route metadata
+
+A `Route` also tells where it came from:
+
+| Method | Returns |
+|:-------|:--------|
+| `IsMiddleware()` | `true` for a route registered with `Use` |
+| `IsAutoHead()` | `true` for a `HEAD` route Fiber derived from a `GET` route |
+| `GroupPrefix()`, `GroupName()` | The prefix and name of the group the route was registered through, or `""` |
+| `Domain()` | The host pattern from [`Domain`](#domain), or `""` for a route that answers on every host. A route behind several patterns reports the innermost |
+| `Domains()` | Every host pattern the route is behind, innermost first, or `nil` for every host. A request reaches the route only when its hostname matches all of them. A sub-app that has `Domain` routes of its own and is mounted on a `Domain` router has two |
+| `InnerHandlers()` | The handlers as registered. A domain router wraps each handler in a host check, which `Handlers` then holds; everywhere else both are the same chain |
+
+### RoutesRevision
+
+`RoutesRevision` returns a counter that increases whenever a route is added, removed, named or annotated. A consumer that derives something from the route table, as the OpenAPI middleware does with its cached document, compares it to the value it last saw instead of locking and scanning the table.
+
+```go title="Signature"
+func (app *App) RoutesRevision() uint64
+```
 
 ## Config
 
@@ -1143,6 +1200,7 @@ func (app *App) RemoveRouteByName(name string, methods ...string)
 
 This method removes a route by function having `*Route` parameter. The `Path` field the function sees is the path as it was registered, not the normalized one.
 If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
+The matcher receives a copy of each route, so it may call other `App` methods, and any writes to the copy are discarded.
 
 ```go title="Signature"
 func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string)

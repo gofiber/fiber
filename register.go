@@ -21,6 +21,8 @@ type Register interface {
 	Add(methods []string, handler any, handlers ...any) Register
 
 	RouteChain(path string) Register
+
+	Name(name string) Register
 }
 
 var _ Register = (*Registering)(nil)
@@ -28,8 +30,10 @@ var _ Register = (*Registering)(nil)
 // Registering provides route registration helpers for a specific path on the
 // application instance.
 type Registering struct {
-	app   *App
-	group *Group
+	docTarget[Register]
+
+	group  *Group
+	domain *domainRouter
 
 	path string
 }
@@ -49,9 +53,7 @@ type Registering struct {
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (r *Registering) All(handler any, handlers ...any) Register {
-	converted := collectHandlers("register", append([]any{handler}, handlers...)...)
-	r.app.register([]string{methodUse}, r.path, r.group, converted...)
-	return r
+	return r.Add([]string{methodUse}, handler, handlers...)
 }
 
 // Get registers a route for GET methods that requests a representation
@@ -117,7 +119,21 @@ func (r *Registering) Query(handler any, handlers ...any) Register {
 // The provided handlers are executed in order, starting with `handler` and then the variadic `handlers`.
 func (r *Registering) Add(methods []string, handler any, handlers ...any) Register {
 	converted := collectHandlers("register", append([]any{handler}, handlers...)...)
-	r.app.register(methods, r.path, r.group, converted...)
+	var inner []Handler
+	var hosts []domainMatcher
+	if r.domain != nil {
+		inner = converted
+		converted = r.domain.wrapHandlers(converted)
+		hosts = r.domain.hosts()
+	}
+	regID := r.app.registerChain(methods, r.path, r.group, hosts, inner, converted)
+	r.cursor.Store(regID)
+	switch {
+	case r.domain != nil:
+		r.domain.remember(regID)
+	case r.group != nil:
+		r.group.cursor.Store(regID)
+	}
 	return r
 }
 
@@ -125,7 +141,13 @@ func (r *Registering) Add(methods []string, handler any, handlers ...any) Regist
 // the path in the current instance as its prefix.
 func (r *Registering) RouteChain(path string) Register {
 	// Create new group
-	route := &Registering{app: r.app, group: r.group, path: getGroupPath(r.path, path)}
+	route := newRegistering(r.app, r.group, r.domain, getGroupPath(r.path, path))
 
 	return route
+}
+
+// Name assigns a name to the most recently registered route.
+func (r *Registering) Name(name string) Register {
+	r.app.applyNameToRegistration(r.cursor.Load(), name)
+	return r
 }

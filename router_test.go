@@ -2380,6 +2380,112 @@ func Test_Route_URL(t *testing.T) {
 	})
 }
 
+func Test_App_MetadataUseDoesNotClobberConcreteRoutes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	annotate(t, app.Get("/api", testEmptyHandler), "Real endpoint")
+	annotate(t, app.Use("/api", func(c Ctx) error { return c.Next() }), "middleware")
+
+	route := app.stack[app.methodInt(MethodGet)][0]
+	require.False(t, route.use)
+	require.Equal(t, "Real endpoint", annotationOf(route))
+}
+
+func Test_App_MetadataDoesNotClobberExplicitHead(t *testing.T) {
+	t.Parallel()
+	app := New()
+	annotate(t, app.Head("/file", testEmptyHandler), "Probe")
+	annotate(t, app.Get("/file", testEmptyHandler), "Download")
+
+	require.Equal(t, "Probe", annotationOf(app.stack[app.methodInt(MethodHead)][0]))
+	require.Equal(t, "Download", annotationOf(app.stack[app.methodInt(MethodGet)][0]))
+}
+
+func Test_App_MetadataDoesNotClobberShadowedRoute(t *testing.T) {
+	t.Parallel()
+	app := New()
+	annotate(t, app.Get("/a", testEmptyHandler), "first")
+	app.Get("/b", testEmptyHandler)
+	annotate(t, app.Get("/a", testEmptyHandler), "second")
+
+	getStack := app.stack[app.methodInt(MethodGet)]
+	require.Equal(t, "first", annotationOf(getStack[0]))
+	require.Equal(t, "second", annotationOf(getStack[2]))
+}
+
+func Test_App_MetadataSecondUseDoesNotClobberFirst(t *testing.T) {
+	t.Parallel()
+	app := New()
+	annotate(t, app.Use("/api", func(c Ctx) error { return c.Next() }), "auth")
+	app.Get("/api/x", testEmptyHandler)
+	annotate(t, app.Use("/api", func(c Ctx) error { return c.Next() }), "rate")
+
+	annotations := make(map[string]int)
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		if route.use {
+			annotations[annotationOf(route)]++
+		}
+	}
+	require.Equal(t, 1, annotations["auth"])
+	require.Equal(t, 1, annotations["rate"])
+}
+
+func Test_App_MetadataAfterMountDoesNotTouchPreviousRoute(t *testing.T) {
+	t.Parallel()
+	sub := New()
+	sub.Get("/users", testEmptyHandler)
+
+	app := New()
+	annotate(t, app.Get("/health", testEmptyHandler), "Health")
+	annotate(t, app.Use("/api", sub), "sub-app")
+
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		if route.Path == "/health" {
+			require.Equal(t, "Health", annotationOf(route))
+		}
+	}
+}
+
+func Test_App_NameOnUseDoesNotRenameConcreteRoutes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", testEmptyHandler).Name("home")
+	app.Use(func(c Ctx) error { return c.Next() }).Name("mymw")
+
+	for _, route := range app.stack[app.methodInt(MethodGet)] {
+		if !route.use {
+			require.Equal(t, "home", route.Name)
+		} else {
+			require.Equal(t, "mymw", route.Name)
+		}
+	}
+}
+
+func Test_App_MetadataNoCollisionWithMountedRoutes(t *testing.T) {
+	t.Parallel()
+	sub := New()
+	sub.Get("/a", testEmptyHandler)
+	annotate(t, sub.Get("/b", testEmptyHandler), "sub b")
+
+	app := New()
+	app.Use("/api", sub)
+
+	apptest.Expect(t, app, "/api/a", StatusOK)
+
+	annotate(t, app.Get("/new", testEmptyHandler).Name("newname"), "new annotation")
+
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route.Path == "/api/b" {
+				if !route.IsAutoHead() {
+					require.Equal(t, "sub b", annotationOf(route), route.Method)
+				}
+				require.NotEqual(t, "newname", route.Name, route.Method)
+			}
+		}
+	}
+}
+
 // newSkipApp builds an app with SkipUnmatchedRoutes enabled plus a benign
 // middleware, so requests actually exercise the lookahead fast path (which is
 // gated on the presence of middleware).

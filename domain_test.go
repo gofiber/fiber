@@ -17,6 +17,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+var errTestDomainHook = errors.New("domain hook failure")
+
 // domainTestExpect sends a GET request for path with the given Host through app
 // and fails the test unless the response has the given status. The response is
 // returned for assertions on its headers.
@@ -2202,7 +2204,7 @@ func Test_Domain_UseMountNestedCycle(t *testing.T) {
 	second.Use("/first", first)
 
 	app := New()
-	d := &domainRouter{app: app, matcher: parseDomainPattern("api.example.com")}
+	d := newDomainRouter(app, nil, parseDomainPattern("api.example.com"), 0)
 	wrapper := New()
 	d.cloneRoutesForDomain(wrapper, first)
 
@@ -2246,4 +2248,59 @@ func Test_Domain_Security_PatternLengthLimits(t *testing.T) {
 		label63 := strings.Repeat("a", 63)
 		require.NotPanics(t, func() { parseDomainPattern(label63 + ".com") })
 	})
+}
+
+func Test_Domain_Group_Use_EmptyHandlers(t *testing.T) {
+	t.Parallel()
+	app := New()
+	dg := app.Domain("api.example.com").Group("/api")
+	dg.Use("/sub")
+	dg.Get("/users", func(c Ctx) error { return c.SendString("ok") })
+
+	apptest.ExpectBody(t, app, apptest.Req(MethodGet, "/api/users", apptest.WithHost("api.example.com")), StatusOK, "ok")
+}
+
+func Test_Domain_Group_HookError(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Hooks().OnGroup(func(Group) error { return errTestDomainHook })
+	require.PanicsWithValue(t, errTestDomainHook, func() {
+		app.Domain("api.example.com").Group("/api")
+	})
+}
+
+func Test_Domain_Mount_HookError(t *testing.T) {
+	t.Parallel()
+	app := New()
+	sub := New()
+	sub.Hooks().OnMount(func(*App) error { return errTestDomainHook })
+	require.PanicsWithValue(t, errTestDomainHook, func() {
+		app.Domain("api.example.com").Use("/api", sub)
+	})
+}
+
+func Test_Domain_AutoHead_PerDomain(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Domain("a.example.com").Get("/x", func(c Ctx) error { return c.SendString("A") })
+	app.Domain("b.example.com").Get("/x", func(c Ctx) error { return c.SendString("B") })
+
+	for _, host := range []string{"a.example.com", "b.example.com"} {
+		apptest.Expect(t, app, apptest.Req(MethodHead, "http://"+host+"/x", apptest.WithHost(host)), StatusOK)
+	}
+}
+
+func Test_Domain_Mount_FiresOnRouteForAutoHeadRoutes(t *testing.T) {
+	t.Parallel()
+	sub := New()
+	sub.Get("/x", testHandlerOK)
+	var heads []string
+	sub.Hooks().OnRoute(func(r Route) error {
+		if r.Method == MethodHead {
+			heads = append(heads, r.Path)
+		}
+		return nil
+	})
+	routerDomainMount(sub)
+	require.Equal(t, []string{"/x"}, heads)
 }
