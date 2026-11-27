@@ -2717,6 +2717,11 @@ func Test_Session_WritesToTheValuesOfARequestWaitForEachOther(t *testing.T) {
 			}
 			return mark, func() bool { return personalheader.ResponseMarked(c.RequestCtx()) }
 		},
+		"the header names a save marks": func(t *testing.T, c fiber.Ctx) (func(), func() bool) {
+			t.Helper()
+			sess := mustGet(t, NewStore(Config{Extractor: extractors.FromHeader("X-Session-ID")}), c)
+			return func() { assert.NoError(t, sess.Save()) }, func() bool { return personalheader.Marked(c.RequestCtx()) != nil }
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

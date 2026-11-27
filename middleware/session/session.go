@@ -474,11 +474,13 @@ func (s *Session) refresh() {
 // valuesMu serializes what this package writes to the values of a request from a
 // goroutine that need not be the one serving it: the new ID that Regenerate and Reset
 // cache there, the entry that ends the request for the session of an unwound
-// middleware, and the mark of a response that holds the session. fasthttp appends to those values without a lock, so of two such writes at
-// once one is lost, and a session whose entry is lost is never told that its request
-// ended. Two sessions of a request have a lock each for their own writes (reqMu), which
-// is why this one is shared; nothing but those writes is done under it. What the
-// application writes to the same values from a goroutine of its own is not covered.
+// middleware, and the marks a cache reads (the header a session ID travels in, and a
+// response that holds the session). fasthttp appends to those values without a lock,
+// so of two such writes at once one is lost: a session whose entry is lost is never
+// told that its request ended, and a lost mark lets the cache store the response. Two
+// sessions of a request have a lock each for their own writes (reqMu), which is why
+// this one is shared; nothing but those writes is done under it. What the application
+// writes to the same values from a goroutine of its own is not covered.
 var valuesMu sync.Mutex
 
 // recache tells the request of the session that its ID is no longer old: a store that is
@@ -756,7 +758,10 @@ func (s *Session) setSession(ttl time.Duration) {
 			resp.Header.SetBytesV(ext.Key, utils.UnsafeBytes(s.id))
 			// The header holds this client's session, so a middleware that keeps the
 			// response for other clients must leave it out, as it does Set-Cookie.
+			// Under valuesMu, as the mark of markPersonal: a session may run on a goroutine of its own.
+			valuesMu.Lock()
 			personalheader.Mark(s.fasthttpCtx(), s.config.places().headers)
+			valuesMu.Unlock()
 		case extractors.SourceCookie:
 			fcookie := fasthttp.AcquireCookie()
 
