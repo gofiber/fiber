@@ -137,6 +137,10 @@ const placeholderOrigin = "https://h"
 // empty segment the router kept apart from "/foo" rather than being
 // collapsed into a path the router never matched.
 func joinUpstreamPath(base *url.URL, requestPath string) string {
+	return joinUpstreamPathWithPolicy(base, requestPath, false)
+}
+
+func joinUpstreamPathWithPolicy(base *url.URL, requestPath string, disableQueryMerge bool) string {
 	if base == nil {
 		return ""
 	}
@@ -184,7 +188,10 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 			fallback = "/" + fallback
 		}
 		joinURLPath(&out, base, &url.URL{Path: fallback})
-		out.RawQuery = ""
+		if disableQueryMerge {
+			out.RawQuery = ""
+			out.ForceQuery = false
+		}
 		out.Fragment = ""
 		return out.String()
 	}
@@ -194,9 +201,25 @@ func joinUpstreamPath(base *url.URL, requestPath string) string {
 		// rather than overwriting it with the request path alone.
 		joinURLPath(&out, base, parsed)
 	}
-	out.RawQuery = parsed.RawQuery
+	out.RawQuery = mergeUpstreamQuery(base.RawQuery, parsed.RawQuery, disableQueryMerge)
+	if disableQueryMerge {
+		out.ForceQuery = false
+	}
 	out.Fragment = parsed.Fragment
 	return out.String()
+}
+
+// mergeUpstreamQuery combines the upstream base query and the client query
+// using "&" (matching net/http/httputil.NewSingleHostReverseProxy) unless
+// disableQueryMerge is true, in which case the client query replaces the base.
+func mergeUpstreamQuery(baseQuery, clientQuery string, disableQueryMerge bool) string {
+	if disableQueryMerge || baseQuery == "" {
+		return clientQuery
+	}
+	if clientQuery == "" {
+		return baseQuery
+	}
+	return baseQuery + "&" + clientQuery
 }
 
 // joinURLPath sets out's Path and RawPath to base's path joined with target's, as net/http/httputil

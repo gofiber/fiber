@@ -133,6 +133,15 @@ type SecurityPolicy struct {
 	// set as well. No effect under UnescapePath, which forwards a ";" as "%3B".
 	// Default: false.
 	AllowPathParameters bool
+
+	// DisableQueryMerge prevents DomainForward and BalancerForward from
+	// preserving query parameters configured on the upstream base URL
+	// (e.g. "http://upstream.example/api?apiKey=secret"). When false
+	// (default), upstream base and client query strings are merged with
+	// "&" like net/http/httputil.NewSingleHostReverseProxy. When true,
+	// the client's query string replaces any query on the upstream base URL.
+	// Default: false.
+	DisableQueryMerge bool
 }
 
 // DefaultSecurityPolicy returns the secure-by-default proxy security
@@ -153,6 +162,7 @@ func DefaultSecurityPolicy() SecurityPolicy {
 		KeepHopByHopHeaders:      false,
 		AllowAmbiguousSlashes:    false,
 		AllowPathParameters:      false,
+		DisableQueryMerge:        false,
 	}
 }
 
