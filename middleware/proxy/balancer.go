@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/fieldname"
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/schemehost"
+	"github.com/gofiber/fiber/v3/internal/tlshandshake"
 	"github.com/gofiber/fiber/v3/internal/wiretarget"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -102,9 +103,17 @@ func Balancer(config ...Config) fiber.Handler {
 		var scratch [realIPScratch]byte
 		ip := realIP(c, scratch[:0])
 
+		// The request is rewritten for the upstream from here on: a value a handler read before keeps its bytes.
+		fieldname.Detach(&req.Header)
 		// Whatever the policy, as in doActionWithPolicy.
 		if !fieldname.DropTrailers(&req.Header) {
 			return fiber.ErrRequestHeaderFieldsTooLarge
+		}
+		if err := screenFieldNames(&req.Header, true); err != nil {
+			return err
+		}
+		if err := lastTraceHop(req, normalized); err != nil {
+			return err
 		}
 		if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized, keepHeaders...) {
 			return fiber.ErrRequestHeaderFieldsTooLarge
@@ -138,17 +147,18 @@ func Balancer(config ...Config) fiber.Handler {
 		// decodes the forged escape as a path no middleware here matched.
 		// Behind a BalancingClient the proxy cannot configure, one that
 		// normalization would change (see wiretarget.SurvivesNormalization)
-		// is refused too.
-		target := wiretarget.Routed(c)
-		if !wiretarget.ParsesAsPath(target, req.Header.Host()) || !segmentsAsRouted(target, policy) ||
+		// is refused too, as is a path the target could only spell as another
+		// one the router keeps apart (see wiretarget.RoutedAsMatched).
+		target, ok := wiretarget.RoutedAsMatched(c)
+		if !ok || !wiretarget.ParsesAsPath(target, req.Header.Host()) || !segmentsAsRouted(target, policy) ||
 			(opaqueClient && !wiretarget.SurvivesNormalization(target)) {
 			return fiber.ErrBadRequest
 		}
 		originalURL := utils.CopyString(line)
-		defer wiretarget.RestoreTarget(c.RequestCtx(), originalURL)
+		// With the URI as it is now: parsed from the line again, it would lose what a handler set in the query.
+		defer wiretarget.RestoreURI(c.RequestCtx(), originalURL, wiretarget.SaveURI(c.RequestCtx()))
 		// fasthttp writes the host of the URI it parsed, in lower case, into the Host field when it sends the
-		// request: put the field back as received, as doActionWithPolicy does, before the line is (a target that
-		// begins with "//" is read with it).
+		// request: put the field back as received, as doActionWithPolicy does.
 		var hostBuf [64]byte
 		originalHost := append(hostBuf[:0], req.Header.Host()...)
 		defer func() { req.Header.SetHostBytes(originalHost) }()
@@ -187,6 +197,9 @@ func Balancer(config ...Config) fiber.Handler {
 		if streams && len(req.Header.UserAgent()) == 0 {
 			defer req.Header.Del(fiber.HeaderUserAgent)
 		}
+		if !sendable(c) { // after ModifyRequest, which may set a Host
+			return fiber.ErrBadRequest
+		}
 
 		// Forward request. A client that streams response bodies hands the upstream's trailer section
 		// to the response after Do returned: such a response is read into one of the proxy's own, see
@@ -202,10 +215,12 @@ func Balancer(config ...Config) fiber.Handler {
 			if err := cfg.ModifyResponse(c); err != nil {
 				return err
 			}
-			// A hook that read one past the bound fails the request, unless it set a response of its own
-			// since: the stream would end the response early, and fasthttp's Body replaces a body whose
-			// read failed with the error's text, which would go out as the upstream's response.
+			// A hook whose read of the stream failed, past the bound or because the upstream broke off, fails
+			// the request, unless it set a response of its own since: the stream would end the response early,
+			// and fasthttp's Body replaces a body whose read failed with the error's text.
 			if streamed && body.failureStands(res) {
+				// As in adoptUpstreamResponse: the failed response's fields are not the error's.
+				resetUpstreamResponse(res)
 				return body.err
 			}
 		}
@@ -253,6 +268,7 @@ func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.Hos
 		Addr:                     addr,
 		IsTLS:                    isTLS,
 		MaxConns:                 cfg.MaxConnsPerHost,
+		RetryIfErr:               retryConnectionErrors,
 
 		ReadBufferSize:  cfg.ReadBufferSize,
 		WriteBufferSize: cfg.WriteBufferSize,
@@ -271,5 +287,6 @@ func newHostClient(u *url.URL, cfg *Config, policy SecurityPolicy) *fasthttp.Hos
 		hc.Dial = g.dialChecked
 		hc.DialTimeout = g.dialCheckedTimeout
 	}
+	tlshandshake.Bound(hc) // Config.Timeout covers the TLS handshake too
 	return hc
 }

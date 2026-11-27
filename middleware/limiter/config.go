@@ -60,7 +60,7 @@ type Config struct {
 	// }
 	KeyGenerator func(fiber.Ctx) string
 
-	// LimitReached is called when a request hits the limit
+	// LimitReached is called when a request hits the limit, with the status already set to 429
 	//
 	// Default: func(c fiber.Ctx) error {
 	//   return c.SendStatus(fiber.StatusTooManyRequests)

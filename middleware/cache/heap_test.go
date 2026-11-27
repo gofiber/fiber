@@ -315,6 +315,20 @@ func TestIndexedHeapRemoveKeepsOrder(t *testing.T) {
 	require.Empty(t, h.keys)
 }
 
+func TestIndexedHeapFreedSlotsHoldNoKeys(t *testing.T) {
+	t.Parallel()
+	h := &indexedHeap{}
+	a := h.put("a", 1, 1, 1, "m", purgeTag{})
+	b := h.put("b", 2, 2, 1, "m", purgeTag{})
+	h.remove(a)
+	h.removeFirst()
+	for _, entry := range h.entries[:cap(h.entries)] {
+		require.Empty(t, entry.key)
+		require.Empty(t, entry.manifest)
+	}
+	require.Equal(t, b, h.put("c", 3, 3, 1, "", purgeTag{}), "a freed index is still reused")
+}
+
 // Sequential: testing.AllocsPerRun panics during a parallel test.
 func TestIndexedHeapEvictionDoesNotAllocate(t *testing.T) {
 	h := &indexedHeap{ends: func(slot, _ uint64) bool { return slot == 0 }} // a write ended every entry of slot 0

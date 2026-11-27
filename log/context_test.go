@@ -32,18 +32,18 @@ func (failingContextBuffer) String() string                      { return "" }
 // buildTestTemplate compiles a context template using the package-default tag
 // map merged with the supplied custom tags. It mirrors the production merge
 // performed by SetContextTemplate so test expectations stay aligned.
-func buildTestTemplate(t *testing.T, format string, custom map[string]ContextTagFunc) *logtemplate.Template[any, ContextData] {
+func buildTestTemplate(t *testing.T, format string, custom map[string]ContextTagFunc) *compiledContext {
 	t.Helper()
 	tags := defaultContextTagMap()
 	maps.Copy(tags, custom)
 	tags[TagContextValue] = defaultContextValueTag
-	tmpl, err := logtemplate.Build[any, ContextData](format, tags)
+	tmpl, err := buildContextTemplate(format, tags)
 	require.NoError(t, err)
 	return tmpl
 }
 
 // executeContextTemplate executes tmpl against ctx and returns what it wrote.
-func executeContextTemplate(t *testing.T, tmpl *logtemplate.Template[any, ContextData], ctx any) string {
+func executeContextTemplate(t *testing.T, tmpl *compiledContext, ctx any) string {
 	t.Helper()
 
 	buf := bytebufferpool.Get()
@@ -84,6 +84,41 @@ func Test_ContextTemplate_ValueTag(t *testing.T) {
 			require.Equal(t, "[req-42]", executeContextTemplate(t, tmpl, tt.ctx))
 		})
 	}
+}
+
+func Test_ContextTemplate_KeyValueFieldQuoted(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ id, want string }{
+		{id: "6f1c2a", want: "6f1c2a"},
+		{id: "0f8e7c1a-6d1b-4f8e-9a2b-3c4d5e6f7a8b", want: "0f8e7c1a-6d1b-4f8e-9a2b-3c4d5e6f7a8b"},
+		{id: `01234567"`, want: `"01234567\""`},
+		{id: "6f1c2a username=admin", want: `"6f1c2a username=admin"`},
+		{id: "dGVzdA==", want: `"dGVzdA=="`},
+		{id: `x" username="admin`, want: `"x\" username=\"admin"`},
+		{id: "x\ty\\", want: `"x\ty\\"`},
+		{id: "0f8e7c1a-6d1b\t4f8e", want: `"0f8e7c1a-6d1b\t4f8e"`},
+		{id: `corp\john`, want: `corp\john`},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			t.Parallel()
+			tmpl := buildTestTemplate(t, KeyValueFormat, map[string]ContextTagFunc{
+				TagRequestIDDashed: stringTag(tc.id), TagUsername: stringTag("john"),
+			})
+			want := "request-id=" + tc.want + " username=john api-key= csrf-token= session-id= "
+			require.Equal(t, want, executeContextTemplate(t, tmpl, context.Background()))
+		})
+	}
+
+	// Only a tag right behind a '=' is a field value.
+	tmpl := buildTestTemplate(t, "[${requestid}] id=${value:id} user=${username}|${username} ",
+		map[string]ContextTagFunc{TagRequestID: stringTag("a =b"), TagUsername: stringTag("j d")})
+	require.Equal(t, `[a =b] id="a user=admin" user="j d"|j d `,
+		executeContextTemplate(t, tmpl, testUserValueContext{"id": "a user=admin"}))
+
+	tmpl = buildTestTemplate(t, "user=${username}", map[string]ContextTagFunc{
+		TagUsername: func(Buffer, any, *ContextData, string) (int, error) { return 0, errContextTestWrite },
+	})
+	require.ErrorIs(t, tmpl.Execute(new(bytebufferpool.ByteBuffer), nil, &ContextData{}), errContextTestWrite)
 }
 
 func Test_ContextTemplate_ValueTagSanitizesControlChars(t *testing.T) {
@@ -148,7 +183,7 @@ func Test_ContextTemplate_DefaultTagsRenderEmpty(t *testing.T) {
 	}
 	format := strings.Join(parts, "")
 
-	tmpl, err := logtemplate.Build[any, ContextData](format, defaults)
+	tmpl, err := buildContextTemplate(format, defaults)
 	require.NoError(t, err)
 
 	// Each stub renders empty, so the only bytes left are the "|" separators.

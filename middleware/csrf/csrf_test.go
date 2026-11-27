@@ -2241,6 +2241,42 @@ func Test_CSRF_SessionModeCookieExpiresWithTheToken(t *testing.T) {
 	}
 }
 
+// A safe request without the cookie is handed the token its session keeps: a new one would make the request a
+// writer of the session, whose save then undoes what another request stored while it ran.
+func Test_CSRF_SessionModeHandsOutTheKeptToken(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	sessHandler, store := session.NewWithStore()
+	app.Use(sessHandler)
+	app.Use(New(Config{Session: store}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	var sessionID string
+	setRole := func(role string) {
+		sess, err := store.GetByID(context.Background(), sessionID)
+		require.NoError(t, err)
+		sess.Set("role", role)
+		require.NoError(t, sess.Save())
+		sess.Release()
+	}
+	app.Get("/revoke", func(c fiber.Ctx) error {
+		setRole("none")
+		return c.SendString("ok")
+	})
+
+	resp := apptest.Expect(t, app, "/", fiber.StatusOK)
+	sessionID = responseCookie(t, resp, "session_id").Value
+	token := responseCookie(t, resp, "csrf_").Value
+	setRole("admin")
+
+	resp = apptest.Expect(t, app, apptest.Req(fiber.MethodGet, "/revoke",
+		apptest.WithHeader(fiber.HeaderCookie, "session_id="+sessionID)), fiber.StatusOK)
+	sess, err := store.GetByID(context.Background(), sessionID)
+	require.NoError(t, err)
+	defer sess.Release()
+	require.Equal(t, "none", sess.Get("role"))
+	require.Equal(t, token, responseCookie(t, resp, "csrf_").Value)
+}
+
 // Test_CSRF_ExpiredCookieCarriesExpires pins that the cookie the middleware sends to drop a stale token is
 // expired with CookieSessionOnly too: without Expires the browser would keep it until it closes.
 func Test_CSRF_ExpiredCookieCarriesExpires(t *testing.T) {

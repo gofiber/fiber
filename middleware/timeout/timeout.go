@@ -27,8 +27,9 @@ const (
 
 // request is shared by the nested timeout.New of one request, whose timers fire on different goroutines.
 type request struct {
-	mu       sync.Mutex  // held while one of them answers, so only one writes the timeout response
-	answered atomic.Bool // set once one has started to answer
+	held     *fasthttp.Response // the timeout response a fasthttp route handler answered with first, under mu
+	mu       sync.Mutex         // held while one of them answers, so only one writes the timeout response
+	answered atomic.Bool        // set once one has started to answer
 }
 
 // snapshot is what OnTimeout sees after the deadline, taken before the handler starts:
@@ -189,10 +190,20 @@ func handleResult(err error, ctx fiber.Ctx, cfg Config) error {
 // TimeoutErrorWithResponse copies resp, so the active RequestCtx response is never
 // read, and sends the copy from a fresh RequestCtx whose request is empty, so the
 // body of a response to a HEAD request is skipped here rather than there.
-func sendTimeoutResponse(ctx fiber.Ctx, resp *fasthttp.Response, isHead bool) {
-	// Or kept as OnTimeout set it: a response it meant to send without a body goes without one.
-	resp.SkipBody = resp.SkipBody || isHead
-	ctx.RequestCtx().TimeoutErrorWithResponse(resp)
+// It leaves a timeout response a fasthttp route handler answered with in place, and returns it.
+func sendTimeoutResponse(ctx fiber.Ctx, resp *fasthttp.Response, isHead bool) *fasthttp.Response {
+	// Read right before the write: the handler may answer while OnTimeout runs.
+	held := ctx.RequestCtx().LastTimeoutErrorResponse()
+	if held == nil {
+		// Or kept as OnTimeout set it: a response it meant to send without a body goes without one.
+		resp.SkipBody = resp.SkipBody || isHead
+		// The handler given up on keeps the connection and may still write to it (c.End, a hijack).
+		resp.SetConnectionClose()
+		ctx.RequestCtx().TimeoutErrorWithResponse(resp)
+	}
+	// The copy carries no body stream, and nothing else closes one OnTimeout left on resp.
+	_ = resp.CloseBodyStream() //nolint:errcheck // the stream is never sent, so its error has no reader
+	return held
 }
 
 // handleTimeout handles the timeout case using the Abandon mechanism
@@ -209,11 +220,12 @@ func handleTimeout(
 	defer req.mu.Unlock()
 
 	var timeoutErr error
+	var held *fasthttp.Response
 	switch {
 	case req.answered.Swap(true):
 		// Another timeout.New of this request answered and fasthttp holds its response,
 		// so only wait for our goroutine too.
-		timeoutErr = fiber.ErrServiceUnavailable
+		held, timeoutErr = req.held, fiber.ErrServiceUnavailable
 	case cfg.OnTimeout == nil:
 		// Build the default timeout response separately from the RequestCtx response.
 		// The timed-out handler can keep running and may have already buffered
@@ -221,7 +233,7 @@ func handleTimeout(
 		var resp fasthttp.Response
 		resp.SetStatusCode(fiber.StatusServiceUnavailable)
 		resp.SetBodyString(fiber.ErrServiceUnavailable.Message)
-		sendTimeoutResponse(ctx, &resp, isHead)
+		held = sendTimeoutResponse(ctx, &resp, isHead)
 		timeoutErr = fiber.ErrServiceUnavailable
 	default:
 		var resp *fasthttp.Response
@@ -246,11 +258,18 @@ func handleTimeout(
 		// Tell fasthttp to not recycle the RequestCtx - it will acquire a new one
 		// for the response and send the captured payload from OnTimeout. All ctx
 		// mutations after this call are ignored by fasthttp.
-		sendTimeoutResponse(ctx, resp, isHead)
+		held = sendTimeoutResponse(ctx, resp, isHead)
 		if timeoutErr == nil {
 			// An error keeps the middleware before us off the response the handler still writes.
 			timeoutErr = fiber.ErrServiceUnavailable
 		}
+	}
+	if held != nil {
+		// That handler still runs on the request: leave the context to the garbage collector, as abandonTimedOut does.
+		req.held = held
+		ctx.Abandon()
+		cancel()
+		return fiber.NewError(held.StatusCode())
 	}
 
 	// Schedule race-free reclamation of the abandoned context. The context is
@@ -258,28 +277,7 @@ func handleTimeout(
 	// Fiber's requestHandler releases the context (after any ErrorHandler runs),
 	// so we never race with goroutines still using it. This fixes the unbounded
 	// fiber.Ctx leak that previously affected every timed-out request (#4359).
-	//
-	// Use a concrete type assertion to *fiber.DefaultCtx rather than an interface
-	// assertion, because only *fiber.DefaultCtx has the signalReleased wiring in
-	// ReleaseCtx/releaseDefaultCtx. An interface assertion could accidentally match
-	// custom Ctx implementations that provide ScheduleReclaim but lack the release
-	// signal, causing the reclamation goroutine to block forever.
-	if dc, ok := ctx.(*fiber.DefaultCtx); ok {
-		dc.ScheduleReclaim(handlerDone, cancel)
-		return timeoutErr
-	}
-
-	// Custom context implementations stay out of the pool, so only cancel the timeout context
-	// once the handler finishes: restoring the parent would race an inner timeout's handler.
-	//
-	// Mark the context as abandoned so ReleaseCtx will skip pooling, allowing the
-	// handler goroutine to continue safely using the context.
-	ctx.Abandon()
-	go func() {
-		<-handlerDone
-		cancel()
-	}()
-
+	ctx.ScheduleReclaim(handlerDone, cancel)
 	return timeoutErr
 }
 
@@ -311,13 +309,16 @@ func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (resp *fasthttp.Respo
 	orig := ctx.RequestCtx()
 	fctx := new(fasthttp.RequestCtx)
 	resp = &fctx.Response
+	var headerPass func(*fasthttp.ResponseHeader) error
 	defer func() {
 		if p := recover(); p != nil {
-			log.Errorw("panic recovered in timeout OnTimeout", "panic", p, "stack", string(debug.Stack()))
-			resp.ResetBody()
-			resp.SetStatusCode(fiber.StatusInternalServerError)
-			resp.SetBodyString(fiber.ErrInternalServerError.Message)
+			answerPanic(resp, "OnTimeout", p)
 			err = fiber.ErrInternalServerError
+		}
+		if headerPass != nil {
+			if passErr := runHeaderPass(headerPass, resp); passErr != nil {
+				err = errors.Join(err, passErr)
+			}
 		}
 	}()
 	// The real conn keeps IsTLS, LocalAddr and the TLS state; fctx is never served on it.
@@ -329,11 +330,35 @@ func (s *snapshot) runOnTimeout(ctx fiber.Ctx, cfg Config) (resp *fasthttp.Respo
 	for _, l := range s.locals {
 		fctx.SetUserValue(l.key, l.value)
 	}
+	// The response goes out past the middleware in front, which left this pass for it (encryptcookie).
+	if pass, ok := fctx.UserValue(wiretarget.TimeoutHeaderKey).(func(*fasthttp.ResponseHeader) error); ok {
+		headerPass = pass
+	}
 
 	app := ctx.App()
 	c := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(c)
 	return resp, cfg.OnTimeout(c)
+}
+
+// runHeaderPass runs pass on the header of resp. A panic there answers 500 without the cookies it left unfinished.
+func runHeaderPass(pass func(*fasthttp.ResponseHeader) error, resp *fasthttp.Response) (err error) { //nolint:nonamedreturns // Uses recover() to overwrite the error
+	defer func() {
+		if p := recover(); p != nil {
+			resp.Header.DelAllCookies()
+			answerPanic(resp, "response pass", p)
+			err = fiber.ErrInternalServerError
+		}
+	}()
+	return pass(&resp.Header)
+}
+
+// answerPanic logs a panic recovered in what of the timeout response and makes resp the 500 response.
+func answerPanic(resp *fasthttp.Response, what string, p any) {
+	log.Errorw("panic recovered in timeout "+what, "panic", p, "stack", string(debug.Stack()))
+	resp.ResetBody()
+	resp.SetStatusCode(fiber.StatusInternalServerError)
+	resp.SetBodyString(fiber.ErrInternalServerError.Message)
 }
 
 func (s *snapshot) release() {

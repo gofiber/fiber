@@ -1197,24 +1197,15 @@ func Test_Cache_RefusalOfGetOrHeadReachesTheOther(t *testing.T) {
 func Test_Cache_RefusalReachesEverySpellingAndBodyOfTheURL(t *testing.T) {
 	t.Parallel()
 	type request struct{ target, body string }
-	most := "/page?a=1" + strings.Repeat("&", maxQueryParams-1) // a=1 and empty parameters, as many as a key sorts
-	past := most + "&"
 	for _, tc := range []struct {
 		name           string
 		refused, other request
-		unstored       bool // past the bounds a key sorts parameters in, so no refusal could reach the entry
 	}{
 		{name: "escaped path", refused: request{target: "/page"}, other: request{target: "/%70age"}},
 		{name: "dot segments", refused: request{target: "/a/../page"}, other: request{target: "/page"}},
 		{name: "empty query", refused: request{target: "/page"}, other: request{target: "/page?"}},
 		{name: "fragment", refused: request{target: "/page#top"}, other: request{target: "/page"}},
 		{name: "absolute form", refused: request{target: "/page"}, other: request{target: "http://example.com/page"}},
-		{name: "escaped query", refused: request{target: "/page?a=1&b=A"}, other: request{target: "/page?b=%41&a=1"}},
-		{name: "query without a value", refused: request{target: "/page?a&b=x+y"}, other: request{target: "/page?a=&b=x%20y"}},
-		{name: "empty parameters", refused: request{target: "/page?a=1&b=2"}, other: request{target: "/page?a=1&&b=2&"}},
-		{name: "only empty parameters", refused: request{target: "/page"}, other: request{target: "/page?&="}},
-		{name: "the most parameters a key sorts", refused: request{target: "/page?a=1"}, other: request{target: most}},
-		{name: "more parameters", refused: request{target: "/page?a=1"}, other: request{target: past}, unstored: true},
 		{name: "another body", refused: request{target: "/page", body: "a"}, other: request{target: "/page", body: "b"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1245,88 +1236,11 @@ func Test_Cache_RefusalReachesEverySpellingAndBodyOfTheURL(t *testing.T) {
 			}
 
 			require.Equal(t, cacheMiss, send(tc.refused, "").cache)
-			want := cacheMiss // the two keep entries of their own
-			if tc.unstored {
-				want = cacheUnreachable
-			}
-			require.Equal(t, want, send(tc.other, "").cache)
+			require.Equal(t, cacheMiss, send(tc.other, "").cache, "the two keep entries of their own")
 			ended.Store(true)
 			require.Equal(t, fiber.StatusUnauthorized, send(tc.refused, "max-age=0").status)
 			got := send(tc.other, "")
 			require.Equal(t, fiber.StatusUnauthorized, got.status, "the refused credential was served %q from the cache", got.body)
-		})
-	}
-}
-
-// A key sorts the parameters of a query only within bounds, and past them a refusal recorded at another spelling
-// would not reach the entry, so a response that may be a credential's is not stored: one whose key holds a credential
-// header or Authorization, or whose Vary names a credential header. Without a credential, with query keys disabled or
-// with a key of the app's own, the spelling of the query does not matter.
-func Test_Cache_CredentialResponsePastTheBoundsOfTheQueryKeyIsNotStored(t *testing.T) {
-	t.Parallel()
-	params := "/page?a=1" + strings.Repeat("&", maxQueryParams-1)          // as many parameters as a key sorts
-	full := "/page?a=" + strings.Repeat("x", maxQueryBufferSize-len("a=")) // as long a query as a key sorts
-	// How each credential is sent, and what the response varies on.
-	type sending struct{ header, value, vary string }
-	credentials := map[string]sending{
-		"":              {header: "X-Token", value: "t1"}, // not declared, so no credential
-		"header":        {header: "X-Token", value: "t1"},
-		"authorization": {header: fiber.HeaderAuthorization, value: "Bearer t1"},
-		"cookie":        {header: fiber.HeaderCookie, value: "session=t1", vary: fiber.HeaderCookie},
-	}
-	for _, tc := range []struct {
-		name, target, credential    string
-		noQueryKeys, ownKey, stored bool
-	}{
-		{name: "the most parameters a key sorts", target: params, credential: "header", stored: true},
-		{name: "more parameters", target: params + "&", credential: "header"},
-		{name: "the most parameters with Authorization", target: params, credential: "authorization", stored: true},
-		{name: "more parameters with Authorization", target: params + "&", credential: "authorization"},
-		{name: "the most parameters varying on a cookie", target: params, credential: "cookie", stored: true},
-		{name: "more parameters varying on a cookie", target: params + "&", credential: "cookie"},
-		{name: "more parameters without a credential", target: params + "&", stored: true},
-		{name: "as long a query as a key sorts", target: full, credential: "header", stored: true},
-		{name: "a longer query", target: full + "x", credential: "header"},
-		{name: "a longer query without a credential", target: full + "x", stored: true},
-		{name: "query keys disabled", target: params + "&", credential: "header", noQueryKeys: true, stored: true},
-		{name: "a key of the app's own", target: params + "&", credential: "header", ownKey: true, stored: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			sent := credentials[tc.credential]
-			cfg := Config{DisableQueryKeys: tc.noQueryKeys}
-			if tc.credential == "header" {
-				cfg.KeyCredentialHeaders = []string{"X-Token"}
-			}
-			if tc.ownKey {
-				cfg.KeyGenerator = func(fiber.Ctx) string { return "page" }
-			}
-			app := fiber.New()
-			app.Use(New(cfg))
-			app.Get("/page", func(c fiber.Ctx) error {
-				// public, or a response to a request with Authorization is not stored at all.
-				c.Set(fiber.HeaderCacheControl, "public, max-age=3600")
-				if sent.vary != "" {
-					c.Set(fiber.HeaderVary, sent.vary)
-				}
-				return c.SendString("page")
-			})
-			w := cacheTestCWire{t: t, app: app}
-			// Built rather than read off the wire, which holds no request line longer than its buffer.
-			send := func() string {
-				req := fasthttp.AcquireRequest()
-				defer fasthttp.ReleaseRequest(req)
-				req.Header.SetHost("example.com")
-				req.SetRequestURI(tc.target)
-				req.Header.Set(sent.header, sent.value)
-				return w.serve(req).cache
-			}
-
-			want := []string{cacheUnreachable, cacheUnreachable}
-			if tc.stored {
-				want = []string{cacheMiss, cacheHit}
-			}
-			require.Equal(t, want, []string{send(), send()})
 		})
 	}
 }
@@ -2053,4 +1967,28 @@ func (s *hookedStorage) DeleteWithContext(ctx context.Context, key string) error
 		}
 	}
 	return s.Memory.DeleteWithContext(ctx, key)
+}
+
+// KeyCookies keys every occurrence of a name in any letter case, so each spelling is a credential a refusal ends.
+func Test_Cache_RefusalEndsAnEntryKeyedByAnySpellingOfTheCookie(t *testing.T) {
+	t.Parallel()
+	for _, cookie := range []string{"Session=tok", "session=; session=tok"} {
+		t.Run(cookie, func(t *testing.T) {
+			t.Parallel()
+			var ended atomic.Bool
+			app := fiber.New()
+			app.Use(New(Config{KeyCookies: []string{"session"}}))
+			app.Get("/", func(c fiber.Ctx) error {
+				if ended.Load() {
+					return c.SendStatus(fiber.StatusUnauthorized)
+				}
+				return c.SendString("account")
+			})
+
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", fiber.HeaderCookie, cookie), cacheMiss, "account")
+			ended.Store(true)
+			require.Equal(t, fiber.StatusUnauthorized, cacheTestCGet(t, app, "/", fiber.HeaderCookie, cookie, fiber.HeaderCacheControl, "no-cache").status)
+			require.Equal(t, fiber.StatusUnauthorized, cacheTestCGet(t, app, "/", fiber.HeaderCookie, cookie).status)
+		})
+	}
 }

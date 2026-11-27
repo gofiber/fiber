@@ -1,14 +1,19 @@
 package log
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"maps"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/internal/contextvalue"
 	"github.com/gofiber/fiber/v3/internal/logtemplate"
+	"github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2/swar"
+	"github.com/valyala/bytebufferpool"
 )
 
 // TagContextValue reads a value from the bound context-like value using the tag parameter as the key.
@@ -37,7 +42,8 @@ const (
 	RequestIDFormat = "[${" + TagRequestID + "}] "
 	// KeyValueFormat renders commonly registered middleware context values as
 	// key/value fields. Sensitive values (api-key, csrf-token, session-id) are
-	// redacted by the registering middleware before reaching the log line.
+	// redacted by the registering middleware before reaching the log line. A
+	// value holding a space, a tab, '=' or '"' is quoted, see SetContextTemplate.
 	KeyValueFormat = "request-id=${" + TagRequestIDDashed + "} " +
 		"username=${" + TagUsername + "} " +
 		"api-key=${" + TagAPIKey + "} " +
@@ -68,7 +74,7 @@ type ContextConfig struct {
 
 // contextTemplate holds the precompiled format. Loads on the log hot path
 // happen lock-free; rebuilds (write side) hold contextMu.
-var contextTemplate atomic.Pointer[logtemplate.Template[any, ContextData]]
+var contextTemplate atomic.Pointer[compiledContext]
 
 var (
 	// contextMu guards rebuilds of contextFormat / contextTags. Readers of
@@ -91,7 +97,8 @@ var (
 // SetContextTemplate configures contextual fields rendered by WithContext for Fiber's default logger.
 // Pass an empty ContextConfig (or ContextConfig{Format: DefaultFormat}) to disable contextual fields.
 // It returns an error if config.Format cannot be parsed or if config.CustomTags attempts to
-// override the reserved TagContextValue tag.
+// override the reserved TagContextValue tag. A tag right behind a '=' is the value of a key=value
+// field: when it holds a space, a tab, '=' or '"' it is written as a Go quoted string.
 func SetContextTemplate(config ContextConfig) error {
 	if _, ok := config.CustomTags[TagContextValue]; ok {
 		return ErrContextTagReserved
@@ -107,10 +114,10 @@ func SetContextTemplate(config ContextConfig) error {
 	maps.Copy(tags, config.CustomTags)
 	tags[TagContextValue] = defaultContextValueTag
 
-	var tmpl *logtemplate.Template[any, ContextData]
+	var tmpl *compiledContext
 	if config.Format != "" {
 		var err error
-		tmpl, err = logtemplate.Build[any, ContextData](config.Format, tags)
+		tmpl, err = buildContextTemplate(config.Format, tags)
 		if err != nil {
 			return err
 		}
@@ -147,10 +154,10 @@ func RegisterContextTag(tag string, fn ContextTagFunc) error {
 	tags := maps.Clone(contextTags)
 	tags[tag] = fn
 
-	var tmpl *logtemplate.Template[any, ContextData]
+	var tmpl *compiledContext
 	if contextFormat != "" {
 		var err error
-		tmpl, err = logtemplate.Build[any, ContextData](contextFormat, tags)
+		tmpl, err = buildContextTemplate(contextFormat, tags)
 		if err != nil {
 			return err
 		}
@@ -166,6 +173,84 @@ func MustRegisterContextTag(tag string, fn ContextTagFunc) {
 	if err := RegisterContextTag(tag, fn); err != nil {
 		panic(err)
 	}
+}
+
+// compiledContext is a compiled context format. fields marks the tags right behind a '=': each writes the value of a
+// key=value field, which is quoted when it would read as more than one field.
+type compiledContext struct {
+	tmpl   *logtemplate.Template[any, ContextData]
+	fields []bool // nil when no tag is
+}
+
+func buildContextTemplate(format string, tags map[string]ContextTagFunc) (*compiledContext, error) {
+	tmpl, err := logtemplate.Build[any, ContextData](format, tags)
+	if err != nil {
+		return nil, err
+	}
+	c := &compiledContext{tmpl: tmpl}
+	fixedParts, funcChain := tmpl.Chains()
+	for i := 1; i < len(funcChain); i++ {
+		if funcChain[i] != nil && funcChain[i-1] == nil && bytes.HasSuffix(fixedParts[i-1], []byte("=")) {
+			if c.fields == nil {
+				c.fields = make([]bool, len(funcChain))
+			}
+			c.fields[i] = true
+		}
+	}
+	return c, nil
+}
+
+// Execute renders the format into buf, as logtemplate.Template.Execute does.
+func (c *compiledContext) Execute(buf *bytebufferpool.ByteBuffer, ctx any, data *ContextData) error {
+	fixedParts, funcChain := c.tmpl.Chains()
+	if c.fields == nil {
+		return logtemplate.ExecuteChains(buf, ctx, data, fixedParts, funcChain)
+	}
+	for i, fn := range funcChain {
+		if fn == nil {
+			buf.B = append(buf.B, fixedParts[i]...)
+			continue
+		}
+		start := len(buf.B)
+		if _, err := fn(buf, ctx, data, utils.UnsafeString(fixedParts[i])); err != nil {
+			return err
+		}
+		// A value with a space, a tab, '=' or '"', such as an X-Request-ID, would end its field and start another.
+		if c.fields[i] && start < len(buf.B) && endsField(buf.B[start:]) {
+			buf.B = append(buf.B[:start], strconv.Quote(string(buf.B[start:]))...)
+		}
+	}
+	return nil
+}
+
+// fieldBreaks marks the bytes that end a key=value field or start a quoted one.
+var fieldBreaks = [256]bool{' ': true, '\t': true, '=': true, '"': true}
+
+// endsField reports whether value holds a byte of fieldBreaks, eight bytes at a time.
+func endsField(value []byte) bool {
+	n := len(value)
+	if n < 8 {
+		for _, b := range value {
+			if fieldBreaks[b] {
+				return true
+			}
+		}
+		return false
+	}
+	// The last word overlaps the one before it instead of leaving a tail.
+	for i := 0; i < n-8; i += 8 {
+		if breakLanes(swar.Load8(value, i)) != 0 {
+			return true
+		}
+	}
+	return breakLanes(swar.Load8(value, n-8)) != 0
+}
+
+// breakLanes flags the lanes of w that hold a byte of fieldBreaks. ' ' and '"' differ only in bit 1, so one test
+// finds both.
+func breakLanes(w uint64) uint64 {
+	return swar.ZeroLanes((w|0x02*swar.Ones)^'"'*swar.Ones) | swar.ZeroLanes(w^'\t'*swar.Ones) |
+		swar.ZeroLanes(w^'='*swar.Ones)
 }
 
 // defaultContextTagMap pre-seeds renderers for the tag names used by Fiber's

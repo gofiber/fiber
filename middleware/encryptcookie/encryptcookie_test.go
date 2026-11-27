@@ -15,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/apptest"
+	recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/timeout"
 )
 
@@ -974,4 +975,116 @@ func Test_Middleware_ExplicitCallbacks_InvalidKey_Panics(t *testing.T) {
 	require.Panics(t, func() {
 		New(Config{Key: key, Encryptor: EncryptCookie, Decryptor: DecryptCookie})
 	})
+}
+
+func Test_Middleware_KeepsEarlierCookieViews(t *testing.T) {
+	t.Parallel()
+	key := GenerateKey(32)
+	token, err := EncryptCookie("token", "alice", key)
+	require.NoError(t, err)
+	other, err := EncryptCookie("other", strings.Repeat("b", 20), key)
+	require.NoError(t, err)
+
+	for name, cookies := range map[string][]string{
+		"in place": {"token", token},
+		"rebuilt":  {"bad", "x", "token", token, "other", other},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				held := c.Cookies("token")
+				if err := c.Next(); err != nil {
+					return err
+				}
+				return c.SendString(held)
+			})
+			app.Use(New(Config{Key: key}))
+			app.Get("/", func(fiber.Ctx) error { return nil })
+			ctx := serve(t, app.Handler(), fiber.MethodGet, cookies...)
+			require.Equal(t, token, string(ctx.Response.Body()))
+		})
+	}
+}
+
+// The response a recover middleware in front sends after a panic, and the one OnTimeout writes after the deadline,
+// both leave past this middleware: their cookies are encrypted all the same.
+func Test_Middleware_EncryptsResponsesSentPastIt(t *testing.T) {
+	t.Parallel()
+	setCookie := func(c fiber.Ctx, name string) { c.Cookie(&fiber.Cookie{Name: name, Value: "plain"}) }
+	// Held until the test ends: a handler that returned at the deadline could win the race with it.
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	onTimeout := func(names ...string) fiber.Handler {
+		return timeout.New(func(fiber.Ctx) error { <-release; return nil }, timeout.Config{
+			Timeout: 10 * time.Millisecond,
+			OnTimeout: func(c fiber.Ctx) error {
+				for _, name := range names {
+					setCookie(c, name)
+				}
+				return fiber.ErrGatewayTimeout
+			},
+		})
+	}
+	for name, tc := range map[string]struct {
+		route  fiber.Handler
+		status int
+		inner  bool
+	}{
+		"panic": {status: fiber.StatusInternalServerError, route: func(c fiber.Ctx) error {
+			setCookie(c, "test")
+			panic("boom")
+		}},
+		"OnTimeout":                    {status: fiber.StatusGatewayTimeout, route: onTimeout("test")},
+		"OnTimeout with two instances": {status: fiber.StatusGatewayTimeout, inner: true, route: onTimeout("test", "inner")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			key := GenerateKey(32)
+			app := fiber.New()
+			app.Use(recoverer.New())
+			app.Use(New(Config{Key: key, Except: []string{"inner"}}))
+			if tc.inner {
+				app.Use(New(Config{Key: key, Except: []string{"test"}}))
+			}
+			app.Get("/", tc.route)
+
+			resp := apptest.Expect(t, app, "/", tc.status)
+			cookies := resp.Cookies()
+			require.NotEmpty(t, cookies)
+			for _, ck := range cookies {
+				require.NotEqual(t, "plain", ck.Value, ck.Name)
+				got, err := DecryptCookie(ck.Name, ck.Value, key)
+				require.NoError(t, err, ck.Name)
+				require.Equal(t, "plain", got)
+			}
+		})
+	}
+}
+
+// An Encryptor that panics on the response OnTimeout wrote leaves it unfinished: the request is still answered as
+// timed out, with a 500 that carries none of its cookies.
+func Test_Middleware_EncryptorPanicOnTimeoutResponse(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	app := fiber.New()
+	app.Use(recoverer.New())
+	app.Use(New(Config{Key: GenerateKey(32), Encryptor: func(name, value, key string) (string, error) {
+		if name == "late" {
+			panic("boom")
+		}
+		return EncryptCookie(name, value, key)
+	}}))
+	app.Get("/", timeout.New(func(fiber.Ctx) error { <-release; return nil }, timeout.Config{
+		Timeout: 10 * time.Millisecond,
+		OnTimeout: func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{Name: "late", Value: "plain"})
+			return fiber.ErrGatewayTimeout
+		},
+	}))
+
+	resp := apptest.Expect(t, app, "/", fiber.StatusInternalServerError)
+	require.True(t, resp.Close, "not answered as a timeout response")
+	require.Empty(t, resp.Cookies())
 }

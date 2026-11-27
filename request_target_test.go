@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -142,4 +143,50 @@ func Test_Ctx_RequestTarget_OriginForm_InvalidHost(t *testing.T) {
 			require.Equal(t, "|//admin/x|//admin/x?a=://", body)
 		})
 	}
+}
+
+func Test_Ctx_FullURL_RequestTargetForms(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error { return c.SendString(c.FullURL()) })
+
+	for _, tc := range []struct{ name, line, host, want string }{
+		{"origin-form", "GET /a/../search?q=fiber", "example.com", "http://example.com/a/../search?q=fiber"},
+		{"origin-form with //", "GET //search", "example.com", "http://example.com//search"},
+		{
+			"origin-form with a URL in the query", "GET /search?next=http://example.org/", "example.com",
+			"http://example.com/search?next=http://example.org/",
+		},
+		{"absolute-form", "GET http://example.com/search?q=fiber", "example.com", "http://example.com/search?q=fiber"},
+		{
+			"absolute-form with a host for a scheme", "GET x.example.org://example.com/search?q=fiber", "example.com",
+			"http://example.com/search?q=fiber",
+		},
+		{"absolute-form with a port", "GET http://example.com:8080/a", "example.com", "http://example.com:8080/a"},
+		{"absolute-form with userinfo", "GET http://u:p@example.com/a", "example.com", "http://example.com/a"},
+		{"absolute-form with another host", "GET http://example.org/a", "example.com", "http://example.org/a"},
+		{"absolute-form without a path", "GET http://example.com", "example.com", "http://example.com"},
+		{
+			"absolute-form with a query only", "GET http://example.com?next=http://example.org/", "example.com",
+			"http://example.com?next=http://example.org/",
+		},
+		{"asterisk-form", "OPTIONS *", "example.com", "http://example.com"},
+		{"authority-form", "CONNECT example.com:443", "example.com:443", "http://example.com:443"},
+		// fasthttp lets a CONNECT target that is not an authority through, and none of it may run on from the host
+		{"CONNECT with a host suffix", "CONNECT .example.org/search", "example.com", "http://example.com"},
+		{"CONNECT with an at sign", "CONNECT @example.org/search", "example.com", "http://example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			status, body := serveRaw(t, app, tc.line+" HTTP/1.1\r\nHost: "+tc.host+"\r\n\r\n")
+			require.Equal(t, StatusOK, status)
+			require.Equal(t, tc.want, body)
+		})
+	}
+
+	// fasthttp refuses a "://" behind anything but a scheme on the wire; a handler can still set such a target
+	c := apptest.Ctx(t, app)
+	c.Request().Header.SetHost("example.com")
+	c.Request().SetRequestURI("example.org/a://b/search")
+	require.Equal(t, "http://example.com", c.FullURL())
 }

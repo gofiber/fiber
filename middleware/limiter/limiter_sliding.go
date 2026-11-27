@@ -97,7 +97,7 @@ func (SlidingWindow) New(cfg *Config) fiber.Handler {
 		// Store err for returning
 		err = c.Next()
 
-		skipHit := cfg.skipsHit(getEffectiveStatusCode(c, err))
+		skipHit := cfg.skipsHit(c, err)
 
 		if skipHit || !cfg.DisableHeaders {
 			// Lock entry

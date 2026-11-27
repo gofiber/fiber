@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"sync/atomic"
 )
 
 var (
@@ -15,19 +16,44 @@ var (
 	fileHeaderPtrType = reflect.PointerTo(fileHeaderType)
 )
 
+// typeCache caches a value per type. Its slots answer for a type seen before without hashing it, as fieldCache.slots
+// do.
+type typeCache[V any] struct {
+	slots [fieldCacheSlots]atomic.Pointer[typeEntry[V]]
+	m     sync.Map // map[reflect.Type]*typeEntry[V]
+}
+
+type typeEntry[V any] struct {
+	v  V
+	id uintptr // typeID of the type
+}
+
+// get returns the value cached for t, building it on first use.
+func (c *typeCache[V]) get(t reflect.Type, build func(reflect.Type) V) V {
+	id := typeID(t)
+	slot := &c.slots[(id>>4)&(fieldCacheSlots-1)]
+	if e := slot.Load(); e != nil && e.id == id {
+		return e.v
+	}
+	cached, ok := c.m.Load(t)
+	if !ok {
+		cached, _ = c.m.LoadOrStore(t, &typeEntry[V]{v: build(t), id: id})
+	}
+	e, ok := cached.(*typeEntry[V])
+	if !ok {
+		var zero V
+		return zero
+	}
+	slot.Store(e)
+	return e.v
+}
+
 // fileHeaderTypes caches, per destination type, whether it holds a *multipart.FileHeader anywhere.
-var fileHeaderTypes sync.Map // map[reflect.Type]bool
+var fileHeaderTypes typeCache[bool]
 
 // holdsFileHeader reports whether a value of type t can hold a *multipart.FileHeader.
 func holdsFileHeader(t reflect.Type) bool {
-	if cached, ok := fileHeaderTypes.Load(t); ok {
-		if held, isBool := cached.(bool); isBool {
-			return held
-		}
-	}
-	held := containsFileHeader(t, map[reflect.Type]struct{}{})
-	fileHeaderTypes.Store(t, held)
-	return held
+	return fileHeaderTypes.get(t, func(t reflect.Type) bool { return containsFileHeader(t, map[reflect.Type]struct{}{}) })
 }
 
 func containsFileHeader(t reflect.Type, seen map[reflect.Type]struct{}) bool {
@@ -59,24 +85,20 @@ func reachable(f *reflect.StructField) bool {
 }
 
 // fileHeaderFields caches, per struct type, the indexes of the fields a walk has to visit.
-var fileHeaderFields sync.Map // map[reflect.Type][]int
+var fileHeaderFields typeCache[[]int]
 
 // headerFields returns the indexes of the fields of the struct type t that schema can fill and through which a
 // *multipart.FileHeader can be reached. A walk visits those and skips the rest, which is most of the fields.
 func headerFields(t reflect.Type) []int {
-	if cached, ok := fileHeaderFields.Load(t); ok {
-		if fields, isInts := cached.([]int); isInts {
-			return fields
+	return fileHeaderFields.get(t, func(t reflect.Type) []int {
+		var fields []int
+		for i := range t.NumField() {
+			if f := t.Field(i); reachable(&f) && holdsFileHeader(f.Type) {
+				fields = append(fields, i)
+			}
 		}
-	}
-	var fields []int
-	for i := range t.NumField() {
-		if f := t.Field(i); reachable(&f) && holdsFileHeader(f.Type) {
-			fields = append(fields, i)
-		}
-	}
-	fileHeaderFields.Store(t, fields)
-	return fields
+		return fields
+	})
 }
 
 // fileHeaders holds the *multipart.FileHeader values of a bind as the request carried them. A header comes

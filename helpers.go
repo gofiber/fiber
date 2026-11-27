@@ -236,8 +236,7 @@ func appendLowerASCII(dst, src []byte) []byte {
 // for nearly every request, and a separate bytes.Count call cost more than the
 // few instructions it takes per word here.
 //
-// lowerBuf must not alias src. src may alias dstBuf at a higher offset, as it
-// does when Path is overridden with a substring of its current value.
+// lowerBuf must not alias src.
 func appendCopyLowerASCII(dstBuf, lowerBuf []byte, src string) (dst, lower []byte, slashes int) { //nolint:nonamedreturns // gocritic unnamedResult requires naming the two same-typed slices
 	n := len(src)
 	// Amortized growth like append: every byte of both slices is overwritten
@@ -650,11 +649,25 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 }
 
 // Pool for headerParams instances. The headerParams object *must*
-// be cleared before being returned to the pool.
+// be cleared before being returned to the pool: use releaseHeaderParams.
 var headerParamPool = sync.Pool{
 	New: func() any {
 		return make(headerParams)
 	},
+}
+
+// maxPoolableHeaderParams is the largest headerParams map that goes back to headerParamPool: far above any real
+// media range, so only maps a client grew stay out of the pool.
+const maxPoolableHeaderParams = 64
+
+// releaseHeaderParams clears params and pools it, unless the client grew it: clearing keeps the capacity.
+func releaseHeaderParams(params headerParams) {
+	if params == nil || len(params) > maxPoolableHeaderParams {
+		return
+	}
+
+	clear(params)
+	headerParamPool.Put(params)
 }
 
 // getOffer return valid offer for header negotiation.
@@ -695,9 +708,6 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 				}
 			} else {
 				params, _ = headerParamPool.Get().(headerParams) //nolint:errcheck // only contains headerParams
-				for k := range params {
-					delete(params, k)
-				}
 				fasthttp.VisitHeaderParams(accept[i:], func(key, value []byte) bool {
 					// The weight parameter name "q" is case-insensitive
 					// (RFC 9110 §12.4.2).
@@ -798,9 +808,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 	}
 
 	for i := range acceptedTypes {
-		if acceptedTypes[i].params != nil {
-			headerParamPool.Put(acceptedTypes[i].params)
-		}
+		releaseHeaderParams(acceptedTypes[i].params)
 	}
 
 	return result
@@ -984,6 +992,11 @@ func matchNoCacheToken(s string, i int) bool {
 // sameFunc reports whether a is the non-nil callback b, which == cannot say for
 // funcs: it compares the closure each value points to.
 func sameFunc(a, b func(*fasthttp.RequestHeader) fasthttp.RequestConfig) bool {
+	return a != nil && *(*unsafe.Pointer)(unsafe.Pointer(&a)) == *(*unsafe.Pointer)(unsafe.Pointer(&b)) //nolint:gosec // funcs are only comparable to nil
+}
+
+// sameConnStateFunc is sameFunc for a ConnState callback.
+func sameConnStateFunc(a, b func(net.Conn, fasthttp.ConnState)) bool {
 	return a != nil && *(*unsafe.Pointer)(unsafe.Pointer(&a)) == *(*unsafe.Pointer)(unsafe.Pointer(&b)) //nolint:gosec // funcs are only comparable to nil
 }
 

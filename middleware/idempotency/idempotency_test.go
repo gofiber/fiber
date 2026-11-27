@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/apptest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/valyala/fasthttp"
@@ -937,6 +939,135 @@ func Test_New_UnlockError(t *testing.T) {
 	require.Equal(t, "ok", body)
 }
 
+// Test_New_RoutedThroughTwice pins that a request reaching the middleware again with the key it holds passes
+// through instead of waiting on itself, and that the outer pass stores the response.
+func Test_New_RoutedThroughTwice(t *testing.T) {
+	t.Parallel()
+	for name, setup := range map[string]func(app *fiber.App, handler fiber.Handler){
+		"RestartRouting": func(app *fiber.App, handler fiber.Handler) {
+			app.Use(New())
+			app.Post("/v1", func(c fiber.Ctx) error {
+				c.Path("/v2")
+				return c.RestartRouting()
+			})
+			app.Post("/v2", handler)
+		},
+		"one instance matched twice": func(app *fiber.App, handler fiber.Handler) {
+			idem := New()
+			app.Use(idem)
+			app.Use("/v1", idem)
+			app.Post("/v1", handler)
+		},
+		"two instances sharing a lock": func(app *fiber.App, handler fiber.Handler) {
+			lock := NewMemoryLock()
+			app.Use(New(Config{Lock: lock}))
+			app.Use(New(Config{Lock: lock}))
+			app.Post("/v1", handler)
+		},
+		"two instances sharing a lock value that holds a slice": func(app *fiber.App, handler fiber.Handler) {
+			lock := sliceLock{Locker: NewMemoryLock(), meta: []int{1}}
+			app.Use(New(Config{Lock: lock}))
+			app.Use(New(Config{Lock: lock}))
+			app.Post("/v1", handler)
+		},
+		"two instances sharing a lock value with a slice in an interface": func(app *fiber.App, handler fiber.Handler) {
+			lock := anyLock{Locker: NewMemoryLock(), meta: []int{1}}
+			app.Use(New(Config{Lock: lock}))
+			app.Use(New(Config{Lock: lock}))
+			app.Post("/v1", handler)
+		},
+		"another key in between": func(app *fiber.App, handler fiber.Handler) {
+			app.Use(New())
+			app.Post("/v1", func(c fiber.Ctx) error {
+				c.Request().Header.Set("X-Idempotency-Key", "11111111-1111-1111-1111-111111111111")
+				c.Path("/v2")
+				return c.RestartRouting()
+			})
+			app.Post("/v2", func(c fiber.Ctx) error {
+				c.Request().Header.Set("X-Idempotency-Key", validKey)
+				c.Path("/v3")
+				return c.RestartRouting()
+			})
+			app.Post("/v3", handler)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			var calls atomic.Int32
+			setup(app, func(c fiber.Ctx) error {
+				calls.Add(1)
+				return c.SendString("ok")
+			})
+			for range 2 {
+				resp, body := idempotencyTestPost(t, app, "/v1", validKey)
+				require.Equal(t, fiber.StatusOK, resp.StatusCode)
+				require.Equal(t, "ok", body)
+			}
+			require.Equal(t, int32(1), calls.Load())
+		})
+	}
+}
+
+// Test_New_SecondRegistrationPassesHeldKey pins that a second registration with its own Lock and Storage passes a key
+// the first one holds through: it neither reads, locks nor stores it.
+func Test_New_SecondRegistrationPassesHeldKey(t *testing.T) {
+	t.Parallel()
+	inner := &storagetest.Memory{}
+	app := fiber.New()
+	app.Use(New())
+	app.Use(New(Config{Storage: inner}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	resp, body := idempotencyTestPost(t, app, "/", validKey)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "ok", body)
+	require.Empty(t, inner.Keys())
+	require.Empty(t, inner.CallKeys(storagetest.OpGet))
+}
+
+type sliceLock struct {
+	Locker
+	meta []int
+}
+
+type anyLock struct {
+	Locker
+	meta any
+}
+
+func Test_MemoryLock_WaiterCap(t *testing.T) {
+	t.Parallel()
+	l := NewMemoryLock()
+	require.NoError(t, l.Lock("a"))
+	var wg sync.WaitGroup
+	for range maxLockWaiters {
+		wg.Go(func() {
+			assert.NoError(t, l.Lock("a"))
+			assert.NoError(t, l.Unlock("a"))
+		})
+	}
+	counted := func() int {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		return l.keys["a"].locked
+	}
+	require.Eventually(t, func() bool { return counted() == maxLockWaiters+1 }, 10*time.Second, time.Millisecond)
+	require.ErrorIs(t, l.Lock("a"), ErrTooManyWaiters)
+	require.NoError(t, l.Lock("b"), "the cap is per key")
+	require.NoError(t, l.Unlock("b"))
+
+	require.NoError(t, l.Unlock("a"))
+	wg.Wait()
+	require.Empty(t, l.keys)
+
+	app := fiber.New()
+	app.Use(New(Config{Lock: &stubLock{lockErr: ErrTooManyWaiters}, Storage: &storagetest.Memory{}}))
+	app.Post("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	resp, _ := idempotencyTestPost(t, app, "/", validKey)
+	require.Equal(t, fiber.StatusConflict, resp.StatusCode)
+}
+
 // The response is stored after the handler returns, so a handler's own deferred
 // cancel must not reach storage through Ctx.Err().
 func Test_Idempotency_Store_After_Handler_Cancel(t *testing.T) {
@@ -1065,4 +1196,64 @@ func Test_Idempotency_RefusedRequestIsNotStored(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "ok", apptest.Body(t, resp))
 	require.Equal(t, 1, calls)
+}
+
+// A dropped or hijacked connection is sent nothing, so the retry reaches the handler instead of an empty 200.
+func Test_Idempotency_DroppedRequestIsNotStored(t *testing.T) {
+	t.Parallel()
+	for name, end := range map[string]func(fiber.Ctx) error{
+		"drop":  func(c fiber.Ctx) error { return c.Drop() },
+		"abort": adaptor.HTTPHandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) }),
+		"hijack": func(c fiber.Ctx) error {
+			c.RequestCtx().HijackSetNoResponse(true)
+			c.RequestCtx().Hijack(func(net.Conn) {})
+			return nil
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			s := storagetest.New()
+			app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+			var calls atomic.Int32
+			app.Post("/", func(c fiber.Ctx) error {
+				if calls.Add(1) == 1 {
+					return end(c)
+				}
+				return c.SendString("done")
+			})
+			post := func() *http.Request {
+				req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+				req.Header.Set(ConfigDefault.KeyHeader, validKey)
+				return req
+			}
+
+			_, err := app.Test(post())
+			require.Error(t, err)
+			require.Empty(t, s.Calls(storagetest.OpSet))
+			apptest.ExpectBody(t, app, post(), fiber.StatusOK, "done")
+		})
+	}
+}
+
+// fasthttp does not report whether it sends the response before a hijack handler, so a hijack it did answer
+// is not stored either: the retry runs the handler again.
+func Test_Idempotency_HijackAfterResponseIsNotStored(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	s := storagetest.New()
+	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
+	var calls atomic.Int32
+	app.Post("/", func(c fiber.Ctx) error {
+		calls.Add(1)
+		c.Hijack(func(net.Conn) {})
+		return c.SendString("sent")
+	})
+
+	for range 2 {
+		apptest.ExpectBody(t, app, apptest.Req(fiber.MethodPost, "/", apptest.WithHeader(ConfigDefault.KeyHeader, validKey)),
+			fiber.StatusOK, "sent")
+	}
+	require.Empty(t, s.Calls(storagetest.OpSet))
+	require.Equal(t, int32(2), calls.Load())
 }

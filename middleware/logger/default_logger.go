@@ -31,9 +31,6 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 		return nil // Skip logging if Skip returns true
 	}
 
-	// Alias colors
-	colors := c.App().Config().ColorScheme
-
 	// Get new buffer
 	buf := bytebufferpool.Get()
 
@@ -48,6 +45,8 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 		// holds one — which keeps this path consistent with ${method}.
 		formatErr := ""
 		if cfg.areColorsEnabled {
+			// Read here only: Config() copies the whole app config.
+			colors := c.App().Config().ColorScheme
 			if data.ChainErr != nil {
 				formatErr = colors.Red + " | " + sanitizeLogValue(data.ChainErr.Error()) + colors.Reset
 			}
@@ -67,7 +66,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			// concatenated format string's error padding is parsed the same
 			// way the uncolored branch parses it.
 			status := response(c, data).StatusCode()
-			method := c.Method()
+			method := requestMethod(c, data)
 			errPadding, _ := strconv.Atoi(data.ErrPaddingStr) //nolint:errcheck // It is fine to ignore the error
 
 			buf.WriteString(data.Timestamp)
@@ -88,7 +87,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			buf.WriteByte(' ')
 			buf.WriteString(colors.Reset)
 			buf.WriteString("| ")
-			writeColumnLeft(buf, sanitizeLogValue(c.Path()), errPadding)
+			writeColumnLeft(buf, sanitizeLogValue(requestPath(c, data)), errPadding)
 			buf.WriteByte(' ')
 			buf.WriteString(formatErr)
 			buf.WriteByte('\n')
@@ -131,12 +130,12 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg *Config) error {
 			buf.WriteString(" | ")
 
 			// HTTP Method with 7 fixed width, left aligned
-			fixedWidth(c.Method(), 7, false)
+			fixedWidth(requestMethod(c, data), 7, false)
 			buf.WriteString(" | ")
 
 			// Path with dynamic padding for error message, left aligned
 			errPadding, _ := strconv.Atoi(data.ErrPaddingStr) //nolint:errcheck // It is fine to ignore the error
-			fixedWidth(sanitizeLogValue(c.Path()), errPadding, false)
+			fixedWidth(sanitizeLogValue(requestPath(c, data)), errPadding, false)
 
 			// Error message
 			buf.WriteString(" ")

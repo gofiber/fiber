@@ -224,6 +224,10 @@ func New(config ...Config) fiber.Handler {
 		path := c.Path()
 		if len(path) > 1 {
 			path = utils.TrimRight(path, '/')
+			if path == "" {
+				// slashes alone are the root, as the router reads them
+				path = "/"
+			}
 		}
 		// Rewrite
 		for _, rule := range compiled {

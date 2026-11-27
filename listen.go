@@ -335,7 +335,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 			return err
 		}
 	}
-	app.hookHeaderReceived()
+	app.hookServer()
 
 	served = true
 	return app.serve(graceful, ln)
@@ -472,7 +472,7 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	if cfg.EnablePrefork {
 		log.Warn("Prefork isn't supported for custom listeners.")
 	}
-	app.hookHeaderReceived()
+	app.hookServer()
 
 	return app.serve(graceful, ln)
 }

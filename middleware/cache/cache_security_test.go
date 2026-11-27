@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/clocktest"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/storagetest"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/helmet"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -52,13 +54,13 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 		cache []string // the X-Cache status of each request, sent one after the other
 	}{
 		{
-			// More than maxQueryParams (128), so the query is hashed instead of spelled out.
+			// Longer than maxKeyDimensionSegmentLength, so the query is hashed instead of spelled out.
 			name:  "excessive query params",
 			url:   cacheTestCQuery(150, "param%[1]d=value%[1]d"),
 			cache: []string{cacheMiss, cacheHit},
 		},
 		{
-			// Values made of "=": sorted, and hashed for their length.
+			// A query of several kilobytes is hashed like any other long one.
 			name:  "excessive query buffer",
 			app:   fiber.Config{ReadBufferSize: 16384}, // large enough to accept the query string for testing
 			url:   cacheTestCQuery(30, "key%d="+strings.Repeat("=", 50)),
@@ -79,7 +81,7 @@ func Test_Cache_Security_UnusualInputs(t *testing.T) {
 			cache: []string{cacheMiss, cacheHit},
 		},
 		{
-			// 100 values for the same parameter: kept in order, and hashed for their length.
+			// 100 values for the same parameter, hashed due to their length.
 			name:  "repeated query parameter",
 			url:   cacheTestCQuery(100, "key=%d"),
 			cache: []string{cacheMiss, cacheHit},
@@ -193,13 +195,11 @@ func Test_Cache_Security_KeyValuesStayDistinct(t *testing.T) {
 	}
 }
 
-// A handler can echo the raw target, so only targets spelled alike, query order aside, share an entry.
+// A handler can echo the raw target, and Bind and a proxied upstream read the query as sent, so only targets
+// spelled alike share an entry.
 func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name, first, second string
-		shared              bool
-	}{
+	for _, tc := range []struct{ name, first, second string }{
 		{name: "a raw byte and its escape", first: `/?q="><script>&x=1`, second: "/?q=%22%3E%3Cscript%3E&x=1"},
 		{name: "an escaped letter", first: "/?a=%41&b=1", second: "/?a=A&b=1"},
 		{name: "the case of an escape", first: "/?a=%2f&b=1", second: "/?a=%2F&b=1"},
@@ -213,9 +213,9 @@ func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 		{name: "a value that holds the separator of a name", first: "/?a=1&a=b=c", second: "/?a=b=c&a=1"},
 		// One name to the parser alone, which keeps a "%" that begins no escape and whatever follows it.
 		{name: "one name by a stray percent sign", first: "/?x%+=1&x%%2B=2", second: "/?x%%2B=2&x%+=1"},
-		{name: "two names", first: "/?a=1&b=2", second: "/?b=2&a=1", shared: true},
-		{name: "two names around a repeated one", first: "/?b=2&a=1&a=3", second: "/?a=1&b=2&a=3", shared: true},
-		{name: "two names, one escaped", first: "/?b=2&%61=1", second: "/?%61=1&b=2", shared: true},
+		{name: "two names", first: "/?a=1&b=2", second: "/?b=2&a=1"},
+		{name: "two names around a repeated one", first: "/?b=2&a=1&a=3", second: "/?a=1&b=2&a=3"},
+		{name: "two names, one escaped", first: "/?b=2&%61=1", second: "/?%61=1&b=2"},
 		{name: "a fragment", first: `/page#"><script>alert(1)</script>`, second: "/page"},
 		{name: "an empty fragment", first: "/page#", second: "/page"},
 		{name: "a fragment behind a query", first: "/page?a=1#x", second: "/page?a=1"},
@@ -259,10 +259,6 @@ func Test_Cache_Security_TargetSpellingsStayDistinct(t *testing.T) {
 			}
 
 			cacheTestCRequireReply(t, wire.target(tc.first), cacheMiss, answer(tc.first))
-			if tc.shared {
-				cacheTestCRequireReply(t, wire.target(tc.second), cacheHit, answer(tc.first))
-				return
-			}
 			cacheTestCRequireReply(t, wire.target(tc.second), cacheMiss, answer(tc.second))
 			cacheTestCRequireReply(t, wire.target(tc.first), cacheHit, answer(tc.first), "the first spelling keeps its entry")
 		})
@@ -294,13 +290,16 @@ func Test_Cache_Security_RequestBodiesStayDistinct(t *testing.T) {
 	}
 }
 
-// c.Body() may answer a bodyless Content-Encoding with a cacheable 501, which plain requests must not get.
+// c.Body() answers a request that names a Content-Encoding and sends no body by that coding, with a 501 for
+// one it cannot undo. A GET or HEAD is served the entry its key selects, which holds no coding, and what its
+// handler answers is neither stored nor allowed to replace that entry; another method keys the coding apart.
 func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 	t.Parallel()
 	read := func(c fiber.Ctx) error { return c.SendString("body=" + string(c.Body())) }
 	methods := []string{fiber.MethodGet, fiber.MethodHead, fiber.MethodPost}
 
 	for _, method := range methods {
+		keyed := method == fiber.MethodPost
 		for _, tc := range []struct {
 			encoding, body string
 			status         int // what c.Body() leaves on the answer to a request with that encoding and no body
@@ -328,8 +327,14 @@ func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 				requireReply(send(), cacheHit, fiber.StatusOK, "body=")
 
 				coded := []apptest.Option{apptest.WithHeader(fiber.HeaderContentEncoding, tc.encoding)}
-				requireReply(send(append(coded, apptest.WithHeader(fiber.HeaderCacheControl, "no-cache"))...), cacheMiss, tc.status, tc.body)
-				requireReply(send(coded...), cacheHit, tc.status, tc.body)
+				revalidated := send(append(coded, apptest.WithHeader(fiber.HeaderCacheControl, "no-cache"))...)
+				if keyed {
+					requireReply(revalidated, cacheMiss, tc.status, tc.body)
+					requireReply(send(coded...), cacheHit, tc.status, tc.body)
+				} else {
+					requireReply(revalidated, cacheUnreachable, tc.status, tc.body)
+					requireReply(send(coded...), cacheHit, fiber.StatusOK, "body=")
+				}
 
 				requireReply(send(), cacheHit, fiber.StatusOK, "body=")
 			})
@@ -344,8 +349,8 @@ func Test_Cache_Security_BodylessContentEncodingStaysDistinct(t *testing.T) {
 			lines       []string
 		}{
 			{cache: cacheMiss, body: "body="},
-			{lines: []string{"content-encoding: gzip", "cache-control: no-cache"}, cache: cacheMiss, body: "body=EOF"},
-			{lines: []string{"content-encoding: gzip"}, cache: cacheHit, body: "body=EOF"},
+			{lines: []string{"content-encoding: gzip", "cache-control: no-cache"}, cache: cacheUnreachable, body: "body=EOF"},
+			{lines: []string{"content-encoding: gzip"}, cache: cacheHit, body: "body="},
 			{cache: cacheHit, body: "body="},
 		} {
 			cacheTestCRequireReply(t, wire.get(step.lines...), step.cache, step.body, "%v", step.lines)
@@ -454,7 +459,7 @@ func Test_Cache_Security_HitNamesTheBodyTheKeySplitsBy(t *testing.T) {
 		{name: "a GET under a KeyGenerator of its own", method: fiber.MethodGet, custom: true, status: fiber.StatusOK, wantCC: "public, max-age="},
 		{name: "a plain GET", method: fiber.MethodGet, status: fiber.StatusOK, wantCC: "public, max-age=", wantVary: keyHeaders},
 		{
-			name: "a Content-Encoding without a body", method: fiber.MethodGet, encoding: "compress",
+			name: "a Content-Encoding without a body", method: fiber.MethodPost, encoding: "compress",
 			status: fiber.StatusNotImplemented, wantCC: "public, max-age=", wantVary: keyHeaders + bodyFields,
 		},
 		{name: "a GET with a body", method: fiber.MethodGet, body: "x", status: fiber.StatusOK, wantCC: "private, max-age=", wantVary: keyHeaders + bodyFields},
@@ -2929,4 +2934,155 @@ func Test_Cache_VaryOnHeaderChangedBehindTheCache(t *testing.T) {
 			}
 		})
 	}
+}
+
+// fasthttp's cookie collection drops a value holding a quote or a backslash, which code reading the Cookie
+// field still sees, so a page built from it is not stored under a key read off the collected cookies.
+func Test_Cache_CookieTheCollectionDropsIsNotStored(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		vary string
+		cfg  Config
+	}{
+		"Vary":       {vary: fiber.HeaderCookie},
+		"KeyCookies": {cfg: Config{KeyCookies: []string{"session"}}},
+		"KeyHeaders": {cfg: Config{KeyHeaders: []string{fiber.HeaderCookie}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				c.Locals("cookie", c.Get(fiber.HeaderCookie))
+				return c.Next()
+			})
+			app.Use(New(tc.cfg))
+			app.Get("/", func(c fiber.Ctx) error {
+				if tc.vary != "" {
+					c.Set(fiber.HeaderVary, tc.vary)
+				}
+				return c.SendString(fmt.Sprint("cookie=", c.Locals("cookie")))
+			})
+
+			// Framing quotes are no part of the value.
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/?framed", fiber.HeaderCookie, `session="tok"`), cacheMiss, `cookie=session="tok"`)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", fiber.HeaderCookie, `session="a\"b"`), cacheUnreachable, `cookie=session="a\"b"`)
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "cookie=")
+		})
+	}
+}
+
+// A forwarding handler drops what Connection lists, and Ctx.Body answers a coding it cannot undo itself,
+// so neither request's answer is the one the key or the Vary describes.
+func Test_Cache_RequestTheHandlerDoesNotSeeAsSentIsNotStored(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Vary("X-Tenant")
+		if body := c.Body(); c.Response().StatusCode() != fiber.StatusOK {
+			return c.Send(body)
+		}
+		// Forwarded as proxy does, on a copy without what Connection lists.
+		forwarded := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(forwarded)
+		c.Request().CopyTo(forwarded)
+		for name := range strings.SplitSeq(c.Get(fiber.HeaderConnection), ",") {
+			forwarded.Header.Del(strings.TrimSpace(name))
+		}
+		return c.SendString("tenant=" + string(forwarded.Header.Peek("X-Tenant")))
+	})
+
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderConnection, "X-Tenant"), cacheUnreachable, "tenant=")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderConnection, "keep-alive"), cacheMiss, "tenant=acme")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme"), cacheHit, "tenant=acme")
+
+	// A hit serves what the key selects; a revalidation of such a request leaves the entry as it was.
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderConnection, "X-Tenant"), cacheHit, "tenant=acme")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderContentEncoding, "compress"), cacheHit, "tenant=acme")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderConnection, "X-Tenant", fiber.HeaderCacheControl, "no-cache"),
+		cacheUnreachable, "tenant=")
+	got := cacheTestCGet(t, app, "/", "X-Tenant", "acme", fiber.HeaderContentEncoding, "compress", fiber.HeaderCacheControl, "no-cache")
+	require.Equal(t, fiber.StatusNotImplemented, got.status)
+	require.Equal(t, cacheUnreachable, got.cache)
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "acme"), cacheHit, "tenant=acme")
+
+	got = cacheTestCGet(t, app, "/", "X-Tenant", "beta", fiber.HeaderContentEncoding, "compress")
+	require.Equal(t, fiber.StatusNotImplemented, got.status)
+	require.Equal(t, cacheUnreachable, got.cache)
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", "X-Tenant", "beta"), cacheMiss, "tenant=beta")
+}
+
+// fasthttp grows its header store by zeroed slots, where an empty line peeks as nil, as if absent: the
+// coding on the line after it must still keep the request out of the cache, in a fresh context or a reused one.
+func Test_Cache_ContentEncodingBehindAnEmptyLineIsNotStored(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+	handler := app.Handler()
+	serve := func(fctx *fasthttp.RequestCtx, lines string) string {
+		fctx.Request.Reset()
+		fctx.Response.Reset()
+		require.NoError(t, fctx.Request.Read(bufio.NewReader(strings.NewReader("GET / HTTP/1.1\r\nHost: example.com\r\n"+lines+"\r\n"))))
+		handler(fctx)
+		return string(fctx.Response.Header.Peek("X-Cache"))
+	}
+	// Three lines ahead put the empty one in the fourth slot, spare since the third grew the store to four.
+	const coded = "X-A: 1\r\nX-B: 2\r\nX-C: 3\r\nContent-Encoding:\r\nContent-Encoding: compress\r\n"
+	reused := &fasthttp.RequestCtx{}
+	serve(reused, "X-A: 1\r\nX-B: 2\r\nX-C: 3\r\nCache-Control: no-store\r\n")
+	for name, fctx := range map[string]*fasthttp.RequestCtx{"fresh": {}, "reused": reused} {
+		require.Equal(t, cacheUnreachable, serve(fctx, coded), name)
+	}
+	require.Equal(t, cacheMiss, serve(&fasthttp.RequestCtx{}, ""))
+}
+
+// A dropped or hijacked connection is sent nothing: the untouched 200 must neither be stored nor replace an entry.
+func Test_Cache_DroppedRequestIsNotStored(t *testing.T) {
+	t.Parallel()
+	for name, end := range map[string]func(fiber.Ctx) error{
+		"drop":  func(c fiber.Ctx) error { return c.Drop() },
+		"abort": adaptor.HTTPHandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) }),
+		"hijack": func(c fiber.Ctx) error {
+			c.RequestCtx().HijackSetNoResponse(true)
+			c.RequestCtx().Hijack(func(net.Conn) {})
+			return nil
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error {
+				if c.Get("X-Blocked") != "" {
+					return end(c)
+				}
+				return c.SendString("page")
+			})
+			blocked := func() {
+				_, err := app.Test(cacheTestCReq("/", "X-Blocked", "1", fiber.HeaderCacheControl, "no-cache"))
+				require.Error(t, err)
+			}
+
+			blocked()
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "page")
+			blocked()
+			cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheHit, "page")
+		})
+	}
+}
+
+// fasthttp does not report whether it sends the response before a hijack handler, so a hijack it did answer
+// is not stored either.
+func Test_Cache_HijackAfterResponseIsNotStored(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Hijack(func(net.Conn) {})
+		return c.SendString("page")
+	})
+
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheUnreachable, "page")
+	cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheUnreachable, "page")
 }

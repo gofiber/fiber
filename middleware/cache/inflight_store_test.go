@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -47,7 +48,7 @@ func bodiesOfSize(storage *storagetest.Memory, size int) int {
 	defer storage.Mu.RUnlock()
 	held := 0
 	for _, value := range storage.Data {
-		if len(value) == size {
+		if len(value) == bodyStampLen+size {
 			held++
 		}
 	}
@@ -292,4 +293,68 @@ func Test_Cache_MaxBytes_NoSpaceKeepsPoppedEntriesTracked(t *testing.T) {
 		require.Equal(t, fiber.StatusGatewayTimeout, resp.StatusCode, "%s must have been evicted", target)
 		require.NoError(t, resp.Body.Close())
 	}
+}
+
+// skipEmptySetStorage drops the write of an empty value, as several fiber.Storage backends do.
+type skipEmptySetStorage struct{ *storagetest.Memory }
+
+func (s skipEmptySetStorage) SetWithContext(ctx context.Context, key string, value []byte, exp time.Duration) error {
+	if len(value) == 0 {
+		return nil
+	}
+	return s.Memory.SetWithContext(ctx, key, value, exp)
+}
+
+// Two stores of one key write the body and the metadata unlocked, so a hit can find the body of the
+// other; and a bodiless replacement must not be served around the body it replaced.
+func Test_CacheStorage_HitServesNoBodyOfAnotherStore(t *testing.T) {
+	t.Parallel()
+	key := defaultKey("/")
+
+	t.Run("metadata of one store, body of another", func(t *testing.T) {
+		t.Parallel()
+		storage := storagetest.New()
+		var calls atomic.Int32
+		app := fiber.New()
+		app.Use(New(Config{Storage: storage}))
+		app.Get("/", func(c fiber.Ctx) error {
+			if calls.Add(1) == 2 {
+				c.Type("html")
+				return c.SendString("<script>")
+			}
+			return c.SendString("text")
+		})
+
+		cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "text")
+		storage.Mu.RLock()
+		first := storage.Data[key]
+		storage.Mu.RUnlock()
+		require.NotEmpty(t, first)
+		cacheTestCRequireReply(t, cacheTestCGet(t, app, "/", fiber.HeaderCacheControl, "no-cache"), cacheMiss, "<script>")
+		storage.Mu.Lock()
+		storage.Data[key] = first
+		storage.Mu.Unlock()
+
+		cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "text")
+	})
+
+	t.Run("bodiless replacement", func(t *testing.T) {
+		t.Parallel()
+		var moved atomic.Bool
+		app := fiber.New()
+		app.Use(New(Config{Storage: skipEmptySetStorage{storagetest.New()}}))
+		app.Get("/", func(c fiber.Ctx) error {
+			if moved.Load() {
+				return c.Redirect().Status(fiber.StatusMovedPermanently).To("/new")
+			}
+			return c.SendString("page")
+		})
+
+		cacheTestCRequireReply(t, cacheTestCGet(t, app, "/"), cacheMiss, "page")
+		moved.Store(true)
+		require.Equal(t, fiber.StatusMovedPermanently, cacheTestCGet(t, app, "/", fiber.HeaderCacheControl, "no-cache").status)
+		got := cacheTestCGet(t, app, "/")
+		require.Equal(t, fiber.StatusMovedPermanently, got.status)
+		require.NotEqual(t, "page", got.body)
+	})
 }

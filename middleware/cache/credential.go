@@ -564,9 +564,12 @@ func (cfg *Config) keyHoldsRequestCredential(c fiber.Ctx) bool {
 
 // sendsCredential reports whether the request sends one of the cookies or a value for any of the headers.
 func sendsCredential(c fiber.Ctx, cookies, headers []string) bool {
-	for _, name := range cookies {
-		if c.Cookies(name) != "" {
-			return true
+	if len(cookies) > 0 {
+		// Any occurrence, as the key holds them all (see appendKeyCookie).
+		for key, value := range c.Request().Header.Cookies() {
+			if len(value) > 0 && fieldname.ContainsFold(cookies, utils.UnsafeString(key)) {
+				return true
+			}
 		}
 	}
 	return hasHeaderValue(c, headers)

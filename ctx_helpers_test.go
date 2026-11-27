@@ -99,6 +99,46 @@ func Test_Req_PathOverride(t *testing.T) {
 	require.Equal(t, "/rewritten", string(c.Request().URI().Path()))
 }
 
+func Test_Req_PathOverride_KeepsEarlierViews(t *testing.T) {
+	t.Parallel()
+	configs := map[string]Config{"default": {}, "CaseSensitive": {CaseSensitive: true}, "UnescapePath": {UnescapePath: true}}
+	// Shorter than the request path and reaching past the offset of :org, so written in place it replaced "acme".
+	for name, cfg := range configs {
+		for _, override := range []string{"/files/other/readme", "/files/%6Fther/readme"} {
+			t.Run(name+override, func(t *testing.T) {
+				t.Parallel()
+				app := New(cfg)
+				app.Use("/orgs/:org", func(c Ctx) error {
+					path, org := c.Path(), c.Params("org")
+					if err := c.Next(); err != nil {
+						return err
+					}
+					return c.SendString(path + " " + org + " " + Locals[string](c, "after"))
+				}, func(c Ctx) error {
+					c.Locals("after", c.Path(override)+" "+c.Params("org"))
+					return c.Next()
+				})
+				app.Get("/files/*", func(Ctx) error { return nil })
+				apptest.ExpectBody(t, app, "/orgs/acme/files/readme", StatusOK, "/orgs/acme/files/readme acme /files/other/readme acme")
+			})
+		}
+	}
+}
+
+func Test_Req_PathOverride_Twice_KeepsEarlierViews(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error {
+		first := c.Path()
+		second := c.Path("/b/second")
+		third := c.Path("/c")
+		return c.SendString(first + " " + second + " " + third)
+	})
+	for range 3 {
+		apptest.ExpectBody(t, app, "/a/first/path", StatusOK, "/a/first/path /b/second /c")
+	}
+}
+
 func Test_Req_GetAll(t *testing.T) {
 	t.Parallel()
 	c := ctxReqFor(t, func(req *fasthttp.Request) {

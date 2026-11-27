@@ -826,7 +826,7 @@ func main() {
 ```
 
 :::tip
-Prefer embedding `fiber.DefaultCtx` (by value or pointer) and constructing it with `fiber.NewDefaultCtx(app)`. Overridden methods are resolved on the concrete `CustomCtx` type Fiber stores for the request.
+Prefer embedding `fiber.DefaultCtx` (by value or pointer) and constructing it with `fiber.NewDefaultCtx(app)`. Overridden methods are resolved on the concrete `CustomCtx` type Fiber stores for the request. Routing does not go through an overridden `Path`: routes are matched, and route parameters taken, from the path Fiber normalized for the request, so the override changes what handlers and middleware read and not which route runs.
 :::
 
 ## RegisterCustomBinder

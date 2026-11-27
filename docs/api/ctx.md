@@ -34,9 +34,7 @@ func (c fiber.Ctx) ScheduleReclaim(handlerDone <-chan struct{}, cancel context.C
 
 `ScheduleReclaim` is the race-free alternative to calling `ForceRelease` yourself, and the way the timeout middleware hands the context to a handler that outlives the request. It calls `Abandon` itself, so calling `Abandon` first is harmless. Close `handlerDone` once the goroutine that still uses the context has completely finished. If it never closes, because the handler never returns, the context is deliberately never reclaimed. It may be called more than once for a request, as happens when one timeout middleware runs inside another: the context is then reclaimed once every `handlerDone` is closed.
 
-:::note
-Only `*fiber.DefaultCtx` signals `ReleaseCtx` that reclamation is armed. With a custom `Ctx` type that embeds it the signal never arrives, so the context is never reclaimed. The timeout middleware uses `Abandon` alone for such types.
-:::
+fasthttp never resets a request it answered with a timeout response (`RequestCtx.TimeoutErrorWithResponse`, as the timeout middleware does), so reclaiming the context of such a request also does what that reset would: it closes the response body stream, removes the [`Locals`](#locals), closing those that implement `io.Closer`, and deletes the multipart temp files. A request a fasthttp handler gave up on as well (`fasthttp.TimeoutHandler`, `ctx.TimeoutError`) is left alone, since that handler still runs on it, and so is its context. A custom `Ctx` type is reclaimed the same way, and `ForceRelease` returns the custom context to the pool, not the `DefaultCtx` it embeds. `ForceRelease` does nothing for a context that is not abandoned or that `ScheduleReclaim` abandoned, even while it is still arming the reclaim, so the two never both release it. For a context you abandoned yourself, use one of the two.
 
 :::caution
 These methods are primarily for internal use and advanced middleware development. Most applications should not need to call them directly.
@@ -1328,7 +1326,7 @@ Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. 
 
 ### BodyRaw
 
-Returns the raw request **body**. Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body larger than the app [BodyLimit](./fiber.md#bodylimit) sets `413 Request Entity Too Large` while no response body was written, and the returned slice holds the error message instead of request data.
+Returns the raw request **body**. Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body larger than the app [BodyLimit](./fiber.md#bodylimit) sets `413 Request Entity Too Large` while no response body was written, and the returned slice holds the error message instead of request data. A streamed body whose read fails, also one with a declared length, returns the read error's message the same way, without the `413`, and the [body binders](./bind.md) fail with that error. A connection the client closes early ends the stream without an error, so the body is then shorter than declared.
 
 ```go title="Signature"
 func (c fiber.Ctx) BodyRaw() []byte
@@ -1535,6 +1533,8 @@ app.Post("/", func(c fiber.Ctx) error {
 
 Form values can be retrieved by name, the **first** value for the given key is returned. The query string is searched first, then the urlencoded body, then the multipart form, so a query parameter hides a form field of the same name. A multipart form is parsed within the app [BodyLimit](./fiber.md#bodylimit) and yields no values past it. So is a streamed urlencoded body, under [`StreamRequestBody`](./fiber.md#streamrequestbody), which also sets `413 Request Entity Too Large` while no response body was written.
 
+A form is read only where the form parser reads the bytes [`Body`](#body) returns: a urlencoded form without a `Content-Encoding` (`identity` aside), and a multipart form without one or with a single `gzip`, either under a list of at most five members, `identity` included, as `Body` takes. Under any other coding `FormValue` finds query parameters only, and [`FormFile`](#formfile) and [`MultipartForm`](#multipartform) return `fiber.ErrUnsupportedMediaType`, so a handler never checks one body and reads the fields of another. Decode such a form from `Body` yourself.
+
 :::caution
 
 On a form request this lowercases the case-insensitive parts of the request's
@@ -1587,7 +1587,7 @@ func (r fiber.Req) Fresh() bool
 
 ### FullURL
 
-Returns the full request URL (protocol + host + original URL).
+Returns the full request URL (protocol + host + original URL). Of an absolute-form request target (`GET http://example.com/search HTTP/1.1`) only the path and query follow the host, which is always the one [`Host`](#host) reports.
 
 ```go title="Signature"
 func (c fiber.Ctx) FullURL() string
@@ -2164,7 +2164,7 @@ app.Post("/", func(c fiber.Ctx) error {
 ### Method
 
 Returns a string corresponding to the HTTP method of the request: `GET`, `POST`, `PUT`, and so on.
-Optionally, you can override the method by passing a string; [Next](#next) then continues with the routes registered after the current one for the new method.
+Optionally, you can override the method by passing a string; [Next](#next) then continues with the routes registered after the current one for the new method. The request carries the new method as well, so a `net/http` or fasthttp handler and a proxy upstream see the method that was routed. An override to `HEAD` of a request sent with another method is carried as `GET`, and a request sent as `HEAD` is answered without a body whatever it is overridden to.
 
 Method tokens are case-sensitive (RFC 9110): the override is first matched exactly against the methods registered in [`Config.RequestMethods`](./fiber.md#requestmethods), and only falls back to the uppercase form as a convenience for the standard methods (e.g. `"get"` → `GET`). An unregistered override is ignored.
 
@@ -2190,7 +2190,7 @@ app.Post("/override", func(c fiber.Ctx) error {
 
 ### MultipartForm
 
-To access multipart form entries, you can parse the binary with `MultipartForm()`. This returns a `*multipart.Form`, allowing you to access form values and files. Parsing is bounded by the app [BodyLimit](./fiber.md#bodylimit).
+To access multipart form entries, you can parse the binary with `MultipartForm()`. This returns a `*multipart.Form`, allowing you to access form values and files. Parsing is bounded by the app [BodyLimit](./fiber.md#bodylimit). A form under a `Content-Encoding` other than a single `gzip` is refused with `fiber.ErrUnsupportedMediaType`, see [FormValue](#formvalue). Under [`StreamRequestBody`](./fiber.md#streamrequestbody), a body that failed to parse, because it is malformed or larger than the limit, is not read again: `MultipartForm`, [`FormFile`](#formfile) and [`Bind().Form`](./bind.md#form) return the same error on every later call, [`FormValue`](#formvalue) finds no value in it, and [`Body`](#body) holds the error message.
 
 :::caution
 
@@ -3915,8 +3915,8 @@ type SendFile struct {
   // Optional. Default: 10 * time.Second
   CacheDuration time.Duration `json:"cache_duration"`
 
-  // The value for the Cache-Control HTTP-header
-  // that is set on the file response. MaxAge is defined in seconds.
+  // The max-age, in seconds, of the Cache-Control HTTP-header that is set
+  // on the file response unless the response already has one.
   //
   // Optional. Default: 0
   MaxAge int `json:"max_age"`
@@ -3942,7 +3942,7 @@ app.Get("/not-found", func(c fiber.Ctx) error {
 ```
 
 :::info
-The name is taken as it is, the way `os.Open` takes it: a `%`, `?` or `#` in it is part of the name, so `c.SendFile("hash_sign_#.txt")` serves that file and nothing needs escaping. The exceptions are a name holding an ASCII control byte, which is not found, and a directory named without a trailing slash, which is not found either; with the slash, its `index.html` is served. A name built from request input is served from wherever it points, so confine it yourself. Lexical cleaning such as `filepath.Join(root, filepath.Clean("/"+name))` keeps the name under `root` but does not stop a symbolic link inside `root` from pointing outside it, and neither does `os.DirFS`. To confine the file itself, open the directory with `os.OpenRoot` and serve through the `FS` option with `root.FS()`, which refuses any link that escapes the root. An encoded separator that a route parameter still holds, as in `..%2Fsecret.txt`, stays one name and is not found rather than decoded into a step out of the directory.
+The name is taken as it is, the way `os.Open` takes it: a `%`, `?` or `#` in it is part of the name, so `c.SendFile("hash_sign_#.txt")` serves that file and nothing needs escaping. The exceptions are a name holding an ASCII control byte, which is not found, and a directory named without a trailing slash, which is not found either; with the slash, its `index.html` is served. A name built from request input is served from wherever it points, so confine it yourself. Lexical cleaning such as `filepath.Join(root, filepath.Clean("/"+name))` keeps the name under `root` but does not stop a symbolic link inside `root` from pointing outside it, and neither does `os.DirFS`. To confine the file itself, open the directory with `os.OpenRoot` and serve through the `FS` option with `root.FS()`, which refuses any link that escapes the root. An encoded separator that a route parameter still holds, as in `..%2Fsecret.txt`, stays one name and is not found rather than decoded into a step out of the directory. A name that is not found returns `fiber.ErrNotFound`, without the name: the default error handler sends the message to the client.
 :::
 
 :::caution Route parameters keep their escapes
@@ -3976,7 +3976,7 @@ With `ByteRange` on, the file server answers one range of a `GET` request: `Rang
 :::
 
 :::info Status
-A status set with `Status` before `SendFile` is the status of the whole file. From `300` up, the file is sent whole without looking at `Range`, `If-Range` or `If-Modified-Since`, which apply only to a `2xx` ([RFC 9110 §13.2.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.2.1)). Below `300` it replaces only a `200`: a `206`, `304` or `416` keeps its own. `Download` applies only to a `2xx` and `MaxAge` only below `400`.
+A status set with `Status` before `SendFile` is the status of the whole file. From `300` up, the file is sent whole without looking at `Range`, `If-Range` or `If-Modified-Since`, which apply only to a `2xx` ([RFC 9110 §13.2.1](https://www.rfc-editor.org/rfc/rfc9110#section-13.2.1)). Below `300` it replaces only a `200`: a `206`, `304` or `416` keeps its own. `Download` applies only to a `2xx` and `MaxAge` only below `400`. `MaxAge` sends `max-age=<MaxAge>` without `public`, which would let a shared cache, the [cache](../middleware/cache.md) middleware included, store a file sent with a cookie, and it keeps a `Cache-Control` set before the call, such as a guard's `private, no-store`. For a file every client may share, set `Cache-Control: public, max-age=<seconds>` after `SendFile` returns.
 :::
 
 :::info
@@ -3994,7 +3994,7 @@ app.Get("/file", func(c fiber.Ctx) error {
 :::info
 You can use multiple `SendFile` calls with different configurations in a single route. Fiber creates different filesystem handlers per config.
 
-A file system whose type is a function (a `func` type with an `Open` method) cannot be told apart from another one, so Fiber keeps no handler for it: a new handler is built, without the file cache, on every call. That keeps the handler cache from growing, but each call costs more than with a struct or pointer type.
+A file system whose type is a function (a `func` type with an `Open` method), or a struct holding a map-, slice- or function-backed one, cannot be told apart from another one, so Fiber keeps no handler for it: a new handler is built, without the file cache, on every call. That keeps the handler cache from growing, but each call costs more than with a struct or pointer type.
 
 Fiber keeps at most 64 handlers per app. A config that is new on every call, such as one whose `FS` is the pointer `fs.Sub` returns or whose `MaxAge` comes from the request, uses them up, and every config that has no handler by then is served the same way, without the file cache. Create such a file system once, outside the handler.
 :::

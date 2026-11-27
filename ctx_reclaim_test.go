@@ -5,6 +5,10 @@
 package fiber
 
 import (
+	"bytes"
+	"io"
+	"mime/multipart"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -51,6 +55,55 @@ func TestDefaultCtx_ScheduleReclaim_HappyPath(t *testing.T) {
 
 	app.ReleaseCtx(c)
 	ctxExpectReclaimed(t, c, "ctx must be reclaimed once both signals fire")
+}
+
+// An application that releases its timed-out contexts itself must not pool one a second time.
+func TestDefaultCtx_ForceRelease_LeavesReclaimedCtx(t *testing.T) {
+	t.Parallel()
+	t.Run("reclaim armed", func(t *testing.T) {
+		t.Parallel()
+		app, c := acquireReclaimTestCtx(t)
+		handlerDone := make(chan struct{})
+		c.ScheduleReclaim(handlerDone, nil)
+		c.ForceRelease()
+		require.True(t, c.IsAbandoned())
+		require.NotNil(t, c.fasthttp)
+
+		close(handlerDone)
+		app.ReleaseCtx(c)
+		ctxExpectReclaimed(t, c, "the reclaim must still pool the ctx")
+	})
+	t.Run("not abandoned", func(t *testing.T) {
+		t.Parallel()
+		_, c := acquireReclaimTestCtx(t)
+		c.route = &Route{}
+		c.ForceRelease()
+		require.NotNil(t, c.route)
+		require.NotNil(t, c.fasthttp)
+	})
+}
+
+// A ForceRelease that runs the moment ScheduleReclaim abandons the ctx must see the reclaim it arms.
+func TestDefaultCtx_ForceRelease_DuringScheduleReclaim(t *testing.T) {
+	t.Parallel()
+	app := New()
+	for range 2000 {
+		c, ok := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+		require.True(t, ok)
+		handlerDone, armed := make(chan struct{}), make(chan struct{})
+		go func() {
+			defer close(armed)
+			c.ScheduleReclaim(handlerDone, nil)
+		}()
+		for !c.IsAbandoned() {
+			runtime.Gosched()
+		}
+		c.ForceRelease()
+		<-armed
+		require.NotNil(t, c.fasthttp, "ForceRelease pooled a ctx the reclaim pools as well")
+		close(handlerDone)
+		app.ReleaseCtx(c)
+	}
 }
 
 // TestDefaultCtx_ScheduleReclaim_ReleaseBeforeHandlerDone covers the reverse
@@ -217,4 +270,87 @@ func TestApp_releaseDefaultCtx_NotAbandonedPools(t *testing.T) {
 
 	require.False(t, c.IsAbandoned())
 	require.NotPanics(t, func() { app.releaseDefaultCtx(c) })
+}
+
+type reclaimCloser struct {
+	io.Reader
+	closed  *atomic.Int32
+	onClose func()
+}
+
+func (r reclaimCloser) Close() error {
+	if r.onClose != nil {
+		r.onClose()
+	}
+	r.closed.Add(1)
+	return nil
+}
+
+// fasthttp never resets a RequestCtx it answered with a timeout response, so the reclaim closes what the request
+// left open, and only once the handler is done. Any other RequestCtx is fasthttp's to reset, and one a fasthttp
+// handler gave up on as well is that handler's, which still runs on it.
+func TestDefaultCtx_ScheduleReclaim_ClosesTimedOutRequest(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct{ timedOut, handlerGaveUp bool }{
+		"timed out":           {timedOut: true},
+		"not timed out":       {},
+		"handler gave up too": {timedOut: true, handlerGaveUp: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app, c := acquireReclaimTestCtx(t)
+
+			var body bytes.Buffer
+			w := multipart.NewWriter(&body)
+			part, err := w.CreateFormFile("file", "upload.bin")
+			require.NoError(t, err)
+			_, err = part.Write(make([]byte, 64<<10))
+			require.NoError(t, err)
+			require.NoError(t, w.Close())
+			c.Request().Header.SetContentType(w.FormDataContentType())
+			c.Request().SetBodyStream(&body, body.Len()) // a streamed upload is kept in a temp file
+			form, err := c.MultipartForm()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, form.RemoveAll()) })
+			upload := form.File["file"][0]
+			onDisk := func() bool {
+				f, err := upload.Open()
+				return err == nil && f.Close() == nil
+			}
+			require.True(t, onDisk())
+
+			var closed atomic.Int32
+			var cleared atomic.Bool
+			fctx := c.RequestCtx()
+			c.Locals("closer", reclaimCloser{closed: &closed})
+			// Closed after "closer", which by then must be gone from the request: its Close may have pooled it.
+			c.Locals("check", reclaimCloser{closed: &closed, onClose: func() { cleared.Store(fctx.UserValue("closer") == nil) }})
+			require.NoError(t, c.SendStream(reclaimCloser{Reader: strings.NewReader("body"), closed: &closed}))
+			if tc.timedOut {
+				c.RequestCtx().TimeoutErrorWithResponse(&fasthttp.Response{})
+			}
+			untouched := func() bool { return closed.Load() == 0 && onDisk() }
+
+			handlerDone := make(chan struct{})
+			c.ScheduleReclaim(handlerDone, nil)
+			if tc.handlerGaveUp {
+				c.RequestCtx().TimeoutError("busy")
+			}
+			app.ReleaseCtx(c)
+			require.Never(t, func() bool { return !untouched() }, 50*time.Millisecond, 5*time.Millisecond)
+
+			close(handlerDone)
+			if tc.handlerGaveUp {
+				require.Never(t, func() bool { return !untouched() || !c.IsAbandoned() }, 50*time.Millisecond, 5*time.Millisecond)
+				return
+			}
+			ctxExpectReclaimed(t, c, "ctx must be reclaimed")
+			if !tc.timedOut {
+				require.Never(t, func() bool { return !untouched() }, 50*time.Millisecond, 5*time.Millisecond)
+				return
+			}
+			require.Eventually(t, func() bool { return closed.Load() == 3 && !onDisk() }, time.Second, 5*time.Millisecond)
+			require.True(t, cleared.Load(), "a closed value was left in the request")
+		})
+	}
 }

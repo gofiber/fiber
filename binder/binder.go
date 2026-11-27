@@ -23,6 +23,7 @@ var (
 	ErrUnmatchedBrackets       = errors.New("unmatched brackets")
 	ErrKeyTooDeep              = errors.New("binder: key is nested too deeply")
 	ErrTooManyElements         = errors.New("binder: keys index too many nested slice elements")
+	ErrFormContentEncoding     = errors.New("binder: the form parser does not undo the form's Content-Encoding as Body does")
 )
 
 var errPoolTypeAssertion = errors.New("failed to type-assert to T")

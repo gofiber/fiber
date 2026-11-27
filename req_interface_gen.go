@@ -57,7 +57,8 @@ type Req interface {
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
 	RequestCtx() *fasthttp.RequestCtx
-	// FullURL returns the full request URL (protocol + host + original URL).
+	// FullURL returns the full request URL (protocol + host + original URL). Of an absolute-form
+	// request target ("GET http://example.com/search") only the path and query follow the host.
 	FullURL() string
 	// UserAgent returns the User-Agent request header.
 	UserAgent() string

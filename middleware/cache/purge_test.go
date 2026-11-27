@@ -273,7 +273,7 @@ func Test_Cache_Security_WriteEndsEntriesOfAStorage(t *testing.T) {
 				raw, err := cacheTestALegacyItem("item v1").MarshalMsg(nil)
 				require.NoError(t, err)
 				storage.Data[key] = raw
-				storage.Data[bodyKey(key)] = []byte("item v1")
+				storage.Data[bodyKey(key)] = append(make([]byte, bodyStampLen), "item v1"...) // stamped with its generation, 0
 			} else {
 				cacheTestCRequireReply(t, cacheTestCGet(t, app, "/item"), cacheMiss, "item v1")
 			}

@@ -603,6 +603,107 @@ func TestTimeout_AbandonedCtxReclaimed(t *testing.T) {
 	}
 }
 
+type closerFunc func()
+
+func (f closerFunc) Close() error {
+	f()
+	return nil
+}
+
+// fasthttp never resets the request of a timed-out handler, so the reclaim closes what that request holds.
+func Test_Timeout_ClosesWhatTheTimedOutRequestLeftOpen(t *testing.T) {
+	t.Parallel()
+	for name, app := range map[string]*fiber.App{"default": fiber.New(), "custom": newCustomCtxApp()} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var localClosed atomic.Bool
+			ctxCh := make(chan fiber.Ctx, 1)
+			release, writerDone := make(chan struct{}), make(chan struct{})
+			app.Get("/", New(func(c fiber.Ctx) error {
+				ctxCh <- c
+				c.Locals("resource", closerFunc(func() { localClosed.Store(true) }))
+				<-release
+				return c.SendStreamWriter(func(w *bufio.Writer) {
+					defer close(writerDone)
+					for {
+						if _, err := w.WriteString("chunk"); err != nil || w.Flush() != nil {
+							return
+						}
+					}
+				})
+			}, Config{Timeout: 20 * time.Millisecond}))
+
+			apptest.Expect(t, app, "/", fiber.StatusServiceUnavailable)
+			c := apptest.Recv(t, ctxCh, time.Second)
+			require.Never(t, localClosed.Load, 50*time.Millisecond, 5*time.Millisecond, "closed while the handler still runs")
+			releaseAndAwaitReclaim(t, c, release, "the context was not reclaimed")
+			apptest.Recv(t, writerDone, 5*time.Second, "the stream writer was left blocked")
+			require.Eventually(t, localClosed.Load, time.Second, 5*time.Millisecond, "the Locals value was not closed")
+		})
+	}
+}
+
+// A fasthttp route handler that gave up on the request with a timeout response of its own still runs on it, so a
+// timeout.New that times out before it answered neither answers over that response nor closes or resets the request
+// under it: whether the handler gave up first or while OnTimeout ran, and for an enclosing timeout.New too.
+func Test_Timeout_LeavesRequestToFastHTTPHandlerThatGaveUp(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct{ whileOnTimeout, nested bool }{
+		"handler first":        {},
+		"while OnTimeout runs": {whileOnTimeout: true},
+		"nested":               {nested: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var closed atomic.Bool
+			onTimeout, gaveUp := make(chan struct{}), make(chan struct{})
+			release, kept := make(chan struct{}), make(chan bool, 1)
+			app := fiber.New()
+			app.Use(func(c fiber.Ctx) error {
+				c.Locals("resource", closerFunc(func() { closed.Store(true) }))
+				return c.Next()
+			})
+			// Returns after its own deadline, so timeout.New answers rather than the handler.
+			untilDeadline := func(c fiber.Ctx) error {
+				deadline := c.Context()
+				err := c.Next()
+				<-deadline.Done()
+				return err
+			}
+			if tc.nested {
+				app.Use(New(untilDeadline, Config{Timeout: 60 * time.Millisecond}))
+			}
+			cfg := Config{Timeout: 20 * time.Millisecond}
+			if tc.whileOnTimeout {
+				cfg.OnTimeout = func(c fiber.Ctx) error {
+					close(onTimeout)
+					<-gaveUp
+					return c.SendStatus(fiber.StatusGatewayTimeout)
+				}
+			}
+			app.Use(New(untilDeadline, cfg))
+			app.Get("/", fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
+				if tc.whileOnTimeout {
+					<-onTimeout
+				}
+				ctx.TimeoutError("busy")
+				go func() {
+					<-release
+					kept <- ctx.UserValue("resource") != nil
+				}()
+				close(gaveUp)
+			}))
+
+			resp := apptest.Do(t, app, "/")
+			require.Never(t, closed.Load, 150*time.Millisecond, 5*time.Millisecond, "closed while the handler still runs")
+			close(release)
+			require.True(t, apptest.Recv(t, kept, 5*time.Second), "the values of the request were reset under the handler")
+			require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+			require.Equal(t, "busy", apptest.Body(t, resp))
+		})
+	}
+}
+
 type neverReturningReader struct{}
 
 func (neverReturningReader) Read(_ []byte) (int, error) { select {} }
@@ -654,6 +755,45 @@ func Test_Timeout_OnTimeout_ResetsBodyStream(t *testing.T) {
 	require.False(t, resp.IsBodyStream())
 	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode())
 	require.Equal(t, fiber.ErrServiceUnavailable.Message, string(resp.Body()))
+}
+
+type closeSignalStream struct {
+	neverReturningReader
+	closed chan struct{}
+}
+
+func (s closeSignalStream) Close() error {
+	close(s.closed)
+	return nil
+}
+
+// fasthttp sends a copy of the OnTimeout response without its body stream, so nothing else closes the stream.
+func Test_Timeout_OnTimeoutClosesBodyStream(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		body       string
+		status     int
+		wantStatus int
+	}{
+		{status: fiber.StatusOK, wantStatus: fiber.StatusServiceUnavailable, body: fiber.ErrServiceUnavailable.Message},
+		{status: fiber.StatusServiceUnavailable, wantStatus: fiber.StatusServiceUnavailable},
+		{status: fiber.StatusGatewayTimeout, wantStatus: fiber.StatusGatewayTimeout},
+	} {
+		t.Run(strconv.Itoa(tc.status), func(t *testing.T) {
+			t.Parallel()
+			stream := closeSignalStream{closed: make(chan struct{})}
+			release := make(chan struct{})
+			defer close(release)
+			app := fiber.New()
+			app.Get("/", New(func(fiber.Ctx) error { <-release; return nil }, Config{
+				Timeout:   20 * time.Millisecond,
+				OnTimeout: func(c fiber.Ctx) error { return c.Status(tc.status).SendStream(stream) },
+			}))
+
+			apptest.ExpectBody(t, app, "/", tc.wantStatus, tc.body)
+			apptest.Recv(t, stream.closed, 5*time.Second, "the OnTimeout body stream was not closed")
+		})
+	}
 }
 
 // OnTimeout answers from a response of its own, so the handler's late writes neither race nor leak into it.
@@ -911,12 +1051,16 @@ type customCtx struct {
 	fiber.DefaultCtx
 }
 
-// A ctx other than *fiber.DefaultCtx is never pooled, so neither timeout.New touches its context after timing out.
-func Test_Timeout_NestedCustomCtxLeavesContextToHandler(t *testing.T) {
-	t.Parallel()
-	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
+func newCustomCtxApp() *fiber.App {
+	return fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
 		return &customCtx{DefaultCtx: *fiber.NewDefaultCtx(app)}
 	})
+}
+
+// A custom ctx is reclaimed only once every handler is done, so neither timeout.New touches its context after timing out.
+func Test_Timeout_NestedCustomCtxLeavesContextToHandler(t *testing.T) {
+	t.Parallel()
+	app := newCustomCtxApp()
 	app.Use(outerTimeout(Config{Timeout: 20 * time.Millisecond}))
 	app.Get("/", New(untilDeadline, Config{Timeout: 19 * time.Millisecond}))
 
@@ -1074,10 +1218,9 @@ func Test_Timeout_HEADResponseHasNoBody(t *testing.T) {
 			release := make(chan struct{})
 			defer close(release)
 			app.Get("/slow", New(func(fiber.Ctx) error { <-release; return nil }, tc.cfg))
-			app.Get("/fast", func(c fiber.Ctx) error { return c.SendString("fast") })
 
 			conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))
-			_, err := conn.Write([]byte("HEAD /slow HTTP/1.1\r\nHost: example.com\r\n\r\nGET /fast HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+			_, err := conn.Write([]byte("HEAD /slow HTTP/1.1\r\nHost: example.com\r\n\r\n"))
 			require.NoError(t, err)
 
 			br := bufio.NewReader(conn)
@@ -1086,9 +1229,76 @@ func Test_Timeout_HEADResponseHasNoBody(t *testing.T) {
 			require.NoError(t, head.Body.Close())
 			require.Equal(t, tc.status, head.StatusCode)
 			require.Equal(t, strconv.Itoa(len(tc.body)), head.Header.Get(fiber.HeaderContentLength))
-			next, err := br.ReadString('\n')
+			rest, err := io.ReadAll(br)
 			require.NoError(t, err)
-			require.Equal(t, "HTTP/1.1 200 OK\r\n", next)
+			require.Empty(t, rest)
+		})
+	}
+}
+
+// The handler given up on keeps the connection and may still write to it (c.End, a hijack), so the timeout
+// response is the last one on it: a late write must not answer the next request.
+func Test_Timeout_ClosesConnection(t *testing.T) {
+	t.Parallel()
+	const secret = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nsecret"
+	hijack := func(late bool) func(<-chan struct{}, chan<- error) any {
+		return func(answered <-chan struct{}, wrote chan<- error) any {
+			return func(w http.ResponseWriter, _ *http.Request) {
+				if late {
+					<-answered
+				}
+				conn, _, err := http.NewResponseController(w).Hijack()
+				if err != nil {
+					wrote <- err
+					return
+				}
+				go func() {
+					<-answered
+					_, err := io.WriteString(conn, secret)
+					wrote <- err
+				}()
+			}
+		}
+	}
+	for name, handler := range map[string]func(answered <-chan struct{}, wrote chan<- error) any{
+		"hijacked late":    hijack(true),
+		"hijacked in time": hijack(false),
+		"ended late": func(answered <-chan struct{}, wrote chan<- error) any {
+			return func(c fiber.Ctx) error {
+				<-answered
+				c.Response().SetBodyString("secret")
+				wrote <- c.End()
+				return nil
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			answered, wrote := make(chan struct{}), make(chan error, 1)
+			app := fiber.New()
+			app.Use(New(func(c fiber.Ctx) error { return c.Next() }, Config{Timeout: 50 * time.Millisecond}))
+			// keeps the chain past the deadline when the handler returns before it
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				<-answered
+				return err
+			})
+			app.Get("/slow", handler(answered, wrote))
+
+			conn := apptest.Dial(t, apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true}))
+			_, err := io.WriteString(conn, "GET /slow HTTP/1.1\r\nHost: example.com\r\n\r\n")
+			require.NoError(t, err)
+			br := bufio.NewReader(conn)
+			resp, err := http.ReadResponse(br, nil)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)
+			require.True(t, resp.Close)
+			require.Equal(t, fiber.ErrServiceUnavailable.Message, apptest.Body(t, resp))
+			rest, err := io.ReadAll(br)
+			require.NoError(t, err)
+			require.Empty(t, rest)
+			close(answered)
+			require.Error(t, apptest.Recv(t, wrote, 5*time.Second, "the handler did not use the connection"))
 		})
 	}
 }
@@ -1115,4 +1325,26 @@ func Test_Timeout_FastHTTPRouteHandlerReturnsWhileTheAnswerIsWritten(t *testing.
 	answer, err := io.ReadAll(conn)
 	require.NoError(t, err)
 	require.Contains(t, string(answer), "503 Service Unavailable")
+}
+
+// fasthttp panics releasing a refused request's RequestCtx that holds a timeout response, so a timeout.New registered
+// with Use runs on a RequestCtx of its own there, and the refused request is answered with the timeout response.
+func Test_Timeout_RefusedRequest(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	timedOut := make(chan error, 1)
+	app.Use("/slow", New(func(c fiber.Ctx) error {
+		<-c.Context().Done()
+		timedOut <- c.Context().Err()
+		return c.Context().Err()
+	}, Config{Timeout: 20 * time.Millisecond}))
+	ln := apptest.Serve(t, app, fiber.ListenConfig{DisableStartupMessage: true})
+
+	conn := apptest.Dial(t, ln)
+	_, err := io.WriteString(conn, "GET /slow HTTP/1.1\r\nHost: example.com\r\nContent-Length: 99999999\r\n\r\n")
+	require.NoError(t, err)
+	answer, err := io.ReadAll(conn)
+	require.NoError(t, err)
+	require.Contains(t, string(answer), "503 Service Unavailable")
+	require.ErrorIs(t, apptest.Recv(t, timedOut, time.Second, "the handler did not time out"), context.DeadlineExceeded)
 }

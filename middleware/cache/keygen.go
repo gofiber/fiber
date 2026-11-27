@@ -18,8 +18,6 @@ import (
 const (
 	maxKeyDimensionSegmentLength = 192
 	defaultKeyBufferCap          = 256
-	maxQueryParams               = 128  // Most parameters a query may have for them to be sorted
-	maxQueryBufferSize           = 4096 // Longest query whose parameters are sorted
 )
 
 // hashPrefix is the reserved namespace prefix for hashed key segments.
@@ -76,12 +74,9 @@ func defaultKeyGenerator(c fiber.Ctx, cfg *Config) string {
 // appendDefaultKey appends the default generator's key to dst.
 func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	dst = appendURLKey(dst, c)
-	uri := c.Req().URI()
-	if !cfg.DisableQueryKeys {
-		dst = append(dst, '|', 'q', '=')
-		dst = appendCanonicalQueryString(dst, uri)
-	}
-	dst = appendTargetAsSent(dst, c.Request().Header.RequestURI(), c.Path(), uri.QueryString(), cfg)
+	query := c.Request().URI().QueryString()
+	dst = appendQueryKey(dst, query, cfg)
+	dst = appendTargetAsSent(dst, c.Request().Header.RequestURI(), c.Path(), query, cfg)
 
 	normalized := headerlookup.Canonical(c)
 	dst = appendFieldsKey(dst, c, cfg, normalized)
@@ -92,13 +87,11 @@ func appendDefaultKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	return dst
 }
 
-// appendRecordKey keys a refusal record so that every spelling of the URL and every body but a QUERY's reach it.
+// appendRecordKey keys a refusal record like the response key, less what this key adds to main's: the spelling
+// of the target beyond its path and query, and every body but a QUERY's. A record reaches the entries those tell apart.
 func appendRecordKey(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 	dst = appendURLKey(dst, c)
-	if !cfg.DisableQueryKeys {
-		dst = append(dst, '|', 'q', '=')
-		dst = appendDecodedQueryString(dst, c.Req().URI())
-	}
+	dst = appendQueryKey(dst, c.Request().URI().QueryString(), cfg)
 	normalized := headerlookup.Canonical(c)
 	dst = appendFieldsKey(dst, c, cfg, normalized)
 	if c.Method() == fiber.MethodQuery {
@@ -163,7 +156,11 @@ func bodySegment(c fiber.Ctx, normalized bool) ([]byte, bool) { //nolint:revive 
 	if req := c.Request(); !req.IsBodyStream() || req.Header.ContentLength() > 0 {
 		body = req.Body()
 	}
-	return body, len(body) > 0 || c.Method() == fiber.MethodQuery || namesContentEncoding(&c.Request().Header, normalized)
+	// A Content-Encoding with no body counts, as c.Body() answers by it, but not on a GET or HEAD: what such a
+	// request's handler leaves is never stored, so a hit can serve it what its key selects.
+	method := c.Method()
+	return body, len(body) > 0 || method == fiber.MethodQuery ||
+		(method != fiber.MethodGet && method != fiber.MethodHead && namesContentEncoding(&c.Request().Header, normalized))
 }
 
 // preParsedMultipart reports whether fasthttp parsed the multipart form while reading it, keeping no copy of the body.
@@ -204,114 +201,14 @@ func appendTargetAsSent(dst, target []byte, path string, keyed []byte, cfg *Conf
 	return dst
 }
 
-type querySegment struct {
-	start, end         uint16
-	nameStart, nameEnd uint16
-}
-
-// A query whose parameters are sorted has to fit the 16 bits of those offsets.
-const _ uint16 = maxQueryBufferSize
-
-// sortedQueryParams returns the number of parameters in query and whether a key sorts them. Past either bound
-// it does not, and the query is keyed as sent: the bounds cap the work and keep the offsets in 16 bits.
-func sortedQueryParams(query string) (int, bool) {
-	if len(query) > maxQueryBufferSize {
-		return 0, false
-	}
-	count := strings.Count(query, "&") + 1
-	return count, count <= maxQueryParams
-}
-
-// appendCanonicalQueryString appends the query stably sorted by decoded name, each parameter kept as sent.
-func appendCanonicalQueryString(dst []byte, uri *fasthttp.URI) []byte {
-	return appendSortedQuery(dst, uri.QueryString(), false)
-}
-
-// appendDecodedQueryString appends the query sorted by name, decoded and escaped again: the same for every spelling.
-func appendDecodedQueryString(dst []byte, uri *fasthttp.URI) []byte {
-	return appendSortedQuery(dst, uri.QueryString(), true)
-}
-
-func appendSortedQuery(dst, raw []byte, decode bool) []byte { //nolint:revive // flag-parameter: the two forms share the sort
-	if len(raw) == 0 {
+// appendQueryKey appends the query as sent, not parsed and sorted: Bind and a proxied upstream read some
+// spellings, orders and empty pairs as different requests.
+func appendQueryKey(dst, query []byte, cfg *Config) []byte {
+	if cfg.DisableQueryKeys {
 		return dst
 	}
-
-	// Safe: the segment is consumed synchronously (appended/hashed) before the
-	// request buffer can be mutated, so no stable copy is required.
-	query := utils.UnsafeString(raw)
-
-	count, within := sortedQueryParams(query)
-	if !within || (count == 1 && !decode) {
-		return appendEscapedBoundKeySegment(dst, query)
-	}
-
-	bufPtr := acquireKeyBuffer()
-	buf := (*bufPtr)[:0]
-
-	var array [maxQueryParams]querySegment
-	segments := array[:count]
-	start := 0
-	for i := range segments {
-		end := len(raw)
-		if next := bytes.IndexByte(raw[start:], '&'); next >= 0 {
-			end = start + next
-		}
-		name := raw[start:end]
-		if eq := bytes.IndexByte(name, '='); eq >= 0 {
-			name = name[:eq]
-		}
-		nameStart := len(buf)
-		buf = fasthttp.AppendUnquotedArg(buf, name)
-		segments[i] = querySegment{ //nolint:gosec // G115 - offsets into a query of at most maxQueryBufferSize bytes
-			start: uint16(start), end: uint16(end), nameStart: uint16(nameStart), nameEnd: uint16(len(buf)),
-		}
-		start = end + 1
-	}
-
-	names := buf
-	slices.SortStableFunc(segments, func(a, b querySegment) int {
-		return bytes.Compare(names[a.nameStart:a.nameEnd], names[b.nameStart:b.nameEnd])
-	})
-
-	sorted := len(buf)
-	emitted := 0
-	for _, segment := range segments {
-		param, name := raw[segment.start:segment.end], names[segment.nameStart:segment.nameEnd]
-		if decode {
-			// fasthttp drops a parameter with neither a name nor a value (a=1&&b=2, a trailing "&"), so the
-			// handler reads the same query whatever number of them a spelling holds.
-			if _, value, _ := utils.CutByte(param, '='); len(name) == 0 && len(value) == 0 {
-				continue
-			}
-		}
-		if emitted > 0 {
-			buf = append(buf, '&')
-		}
-		emitted++
-		if decode {
-			buf = appendDecodedParam(buf, name, param)
-		} else {
-			buf = append(buf, param...)
-		}
-	}
-
-	// Escaped, as a parameter sent raw may hold a delimiter.
-	dst = appendEscapedBoundKeySegment(dst, utils.UnsafeString(buf[sorted:]))
-	releaseKeyBuffer(bufPtr, buf)
-	return dst
-}
-
-// appendDecodedParam appends param as name=value, both escaped again: q=%41 and q=A, q and q= append the same.
-func appendDecodedParam(dst, name, param []byte) []byte {
-	var value []byte
-	if _, raw, found := utils.CutByte(param, '='); found {
-		var decoded [64]byte
-		value = fasthttp.AppendUnquotedArg(decoded[:0], raw)
-	}
-	dst = utils.AppendQueryEscape(dst, utils.UnsafeString(name))
-	dst = append(dst, '=')
-	return utils.AppendQueryEscape(dst, utils.UnsafeString(value))
+	dst = append(dst, '|', 'q', '=')
+	return appendEscapedBoundKeySegment(dst, utils.UnsafeString(query))
 }
 
 // appendCanonicalHeaderSubset appends the named request headers, hashing the values of credentials.
@@ -372,14 +269,37 @@ func appendCanonicalCookieSubset(dst []byte, c fiber.Ctx, cfg *Config) []byte {
 		// Escape name (though names are normalized and trusted)
 		dst = appendEscapedKeyDelimiters(dst, name)
 		dst = append(dst, ':')
-
-		if value := c.Cookies(name); value != "" {
-			dst = append(dst, hashPrefix...)
-			dst = appendAuthHash(dst, [][]byte{utils.UnsafeBytes(value)})
-		}
+		dst = appendKeyCookie(dst, &c.Request().Header, name)
 	}
 
 	return dst
+}
+
+// appendKeyCookie appends the digest of the cookie name, nothing for a missing or empty one. Every
+// occurrence in any letter case, as Bind().Cookie reads them: c.Cookies answers with the first exact one.
+func appendKeyCookie(dst []byte, h *fasthttp.RequestHeader, name string) []byte {
+	var one [2][]byte
+	pairs := one[:0]
+	for key, value := range h.Cookies() {
+		if utils.EqualFold(utils.UnsafeString(key), name) {
+			pairs = append(pairs, key, value)
+		}
+	}
+
+	switch {
+	case len(pairs) == 0:
+		return dst
+	case len(pairs) == 2 && string(pairs[0]) == name:
+		if len(pairs[1]) == 0 {
+			return dst
+		}
+		dst = append(dst, hashPrefix...)
+		return appendAuthHash(dst, pairs[1:])
+	}
+	// Names and values in turn, counted to keep this form apart from the one above.
+	dst = utils.AppendInt(dst, int64(len(pairs)/2))
+	dst = append(dst, hashPrefix...)
+	return appendAuthHash(dst, pairs)
 }
 
 // countKeyDelimiters returns how many bytes escaping s would add, which is one

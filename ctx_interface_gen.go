@@ -238,7 +238,10 @@ type Ctx interface {
 	// This MUST only be called after all goroutines (including requestHandler and
 	// ErrorHandler) have completely finished using this context. Calling it while
 	// any goroutine is still running causes races.
+	// It does nothing for a context that is not abandoned or whose reclaim ScheduleReclaim
+	// armed: a second release would hand one context to two requests.
 	ForceRelease()
+	releaseAbandoned()
 	// ScheduleReclaim arms automatic reclamation of an abandoned context, returning
 	// it to the pool once it is safe to do so.
 	//
@@ -282,6 +285,8 @@ type Ctx interface {
 	// Route.match skip the quick-reject entirely.
 	pathSlashCount(app *App) int
 	getDetectionPath() string
+	// getPath is the path parameters are cut from, at offsets found in the detection path; a custom Path may not fit them.
+	getPath() string
 	getValues() *[maxParams]string
 	getMatched() bool
 	getSkipNonUseRoutes() bool
@@ -321,7 +326,8 @@ type Ctx interface {
 	// Config.StreamRequestBody is enabled and the body is not already buffered.
 	// Reading it consumes the body, so a later Body call will not see it.
 	BodyStream() io.Reader
-	// FullURL returns the full request URL (protocol + host + original URL).
+	// FullURL returns the full request URL (protocol + host + original URL). Of an absolute-form
+	// request target ("GET http://example.com/search") only the path and query follow the host.
 	FullURL() string
 	// UserAgent returns the User-Agent request header.
 	UserAgent() string

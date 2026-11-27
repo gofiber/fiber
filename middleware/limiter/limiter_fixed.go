@@ -90,7 +90,7 @@ func (FixedWindow) New(cfg *Config) fiber.Handler {
 		err = c.Next()
 
 		// Check for SkipFailedRequests and SkipSuccessfulRequests
-		if cfg.skipsHit(getEffectiveStatusCode(c, err)) {
+		if cfg.skipsHit(c, err) {
 			// Lock entry
 			mu.Lock()
 			entry, getErr := manager.get(reqCtx, key)

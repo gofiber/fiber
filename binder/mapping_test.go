@@ -167,6 +167,7 @@ func Test_FilterFlags(t *testing.T) {
 
 		{input: "text/javascript; charset=utf-8; foo=bar", expected: "text/javascript"},
 		{input: "text/javascript charset=utf-8", expected: "text/javascript"},
+		{input: "text/javascript\t; charset=utf-8", expected: "text/javascript"},
 	}
 
 	for _, tt := range tests {
@@ -780,6 +781,36 @@ func Test_BindData_AlternatingKeys(t *testing.T) {
 	}
 }
 
+// Test_BindData_SplitKeyLimit pins that a value is split only under a key of at most maxSplitKeyBytes:
+// every piece is filed under the whole key, so splitting costs the key's length times its commas.
+func Test_BindData_SplitKeyLimit(t *testing.T) {
+	t.Parallel()
+	longest := strings.Repeat("k", maxSplitKeyBytes-len("tags."))
+	for _, tc := range []struct {
+		name string
+		key  string
+		want []string
+	}{
+		{name: "longest split key", key: longest, want: []string{"a", "b"}},
+		{name: "longer key", key: longest + "k", want: []string{"a,b"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			b := &FormBinding{EnableSplitting: true}
+			var filter struct {
+				Tags map[string][]string `form:"tags"`
+			}
+			require.NoError(t, b.Bind(newFormRequest(t, "tags."+tc.key+"=a,b"), &filter))
+			require.Equal(t, tc.want, filter.Tags[tc.key])
+
+			values := map[string][]string{}
+			field := func(mw *multipart.Writer) { require.NoError(t, mw.WriteField("tags."+tc.key, "a,b")) }
+			require.NoError(t, b.Bind(newMultipartRequestWith(t, field), &values))
+			require.Equal(t, tc.want, values["tags."+tc.key])
+		})
+	}
+}
+
 // Test_Bind_MapOfSlices_OwnsValues pins that a map-of-slices destination,
 // which keeps the value slices it is given, gets slices of its own: a later
 // bind reusing the pool must leave its values as they were bound.
@@ -835,7 +866,9 @@ func Test_Bind_StringMap_KeepsLastValue(t *testing.T) {
 			for key, values := range all {
 				want[key] = values[len(values)-1]
 			}
-			require.Contains(t, slices.Collect(maps.Values(want)), "4,5")
+			if src.name != "cookie" { // a repeated cookie binds its first value
+				require.Contains(t, slices.Collect(maps.Values(want)), "4,5")
+			}
 
 			for _, split := range []bool{false, true} {
 				got := map[string]string{"kept": "yes"}

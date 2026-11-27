@@ -22,7 +22,8 @@ type CustomCtx interface {
 	// Abandon marks the context as abandoned. An abandoned context will not be
 	// returned to the pool when ReleaseCtx is called. This is used by the timeout
 	// middleware to return immediately while the handler goroutine continues.
-	// The cleanup goroutine must call ForceRelease when the handler finishes.
+	// The cleanup goroutine must call ForceRelease when the handler finishes,
+	// unless ScheduleReclaim armed the reclaim, which then releases it.
 	Abandon()
 
 	// IsAbandoned returns true if the context has been abandoned.
@@ -30,6 +31,7 @@ type CustomCtx interface {
 
 	// ForceRelease releases an abandoned context back to the pool.
 	// Must only be called after the handler goroutine has completely finished.
+	// It does nothing once ScheduleReclaim armed the reclaim, or for a context that is not abandoned.
 	ForceRelease()
 
 	// Methods to use with next stack.
@@ -38,6 +40,7 @@ type CustomCtx interface {
 	getTreePathHash() int
 	pathSlashCount(app *App) int
 	getDetectionPath() string
+	getPath() string
 	getPathOriginal() string
 	getValues() *[maxParams]string
 	getMatched() bool
@@ -130,9 +133,7 @@ func (app *App) ReleaseCtx(c CustomCtx) {
 		// handler is done so the reclaimer can return the ctx to the pool. The ctx
 		// is still not pooled here; the reclaimer does that once the handler also
 		// finishes. Otherwise (e.g. SSE) leave it unreleased as before.
-		if dc, ok := c.(*DefaultCtx); ok {
-			dc.signalReleased()
-		}
+		c.signalReleased()
 		return
 	}
 	c.release()

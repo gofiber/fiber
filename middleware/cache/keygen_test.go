@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -35,22 +34,17 @@ func keygenCorpus() []keygenCase {
 	return []keygenCase{
 		{name: "noquery", uri: "/", want: keyStart + keyNoHeaders},
 		{name: "single", uri: "/?foo=bar", want: keyStart + "foo=bar" + keyNoHeaders},
-		{name: "multi_dup", uri: "/?b=2&a=1&a=3", want: keyStart + "a=1&a=3&b=2" + keyNoHeaders},
+		// The query as sent: Bind reads doc and doc[] as one field, and a proxy forwards a trailing &.
+		{name: "multi_dup", uri: "/?b=2&a=1&a=3", want: keyStart + "b=2&a=1&a=3" + keyNoHeaders},
 		{name: "dup_order", uri: "/?a=3&a=1", want: keyStart + "a=3&a=1" + keyNoHeaders},
+		{name: "bind_spellings", uri: "/?doc[]=welcome&doc=minutes", want: keyStart + "doc[]=welcome&doc=minutes" + keyNoHeaders},
+		{name: "bind_spellings_swapped", uri: "/?doc=minutes&doc[]=welcome", want: keyStart + "doc=minutes&doc[]=welcome" + keyNoHeaders},
+		{name: "trailing_pair", uri: "/?id=7&", want: keyStart + "id=7&" + keyNoHeaders},
 		{name: "path_delims", uri: "/a|b:c\\d?x=1", want: `scheme=http|host=example.com|/a\pb\cc\\d|q=x=1` + keyNoHeaders},
-		{name: "query_escape", uri: "/?k=a b&z=%2F&k=z", want: keyStart + "k=a b&k=z&z=%2F" + keyNoHeaders},
-		{name: "query_spellings", uri: "/?b=%41&a=x+y&a=x%20y&b=A", want: keyStart + "a=x+y&a=x%20y&b=%41&b=A" + keyNoHeaders},
-		{name: "query_delims", uri: `/?b=x|y&a=1:2&c=\`, want: keyStart + `a=1\c2&b=x\py&c=\\` + keyNoHeaders},
-		// The names are sorted as the parser decodes them, so two spellings of one name stay in the order sent.
-		{name: "query_name_spellings", uri: "/?b=1&%61=2&a=3&%62=4", want: keyStart + "%61=2&a=3&b=1&%62=4" + keyNoHeaders},
-		{name: "query_name_plus", uri: "/?b=1&+=2&%20=3&a=4", want: keyStart + "+=2&%20=3&a=4&b=1" + keyNoHeaders},
-		{name: "query_bare_parameters", uri: "/?b&&a=&=x&", want: keyStart + "&=x&&a=&b" + keyNoHeaders},
-		{name: "long_query_sorted", uri: "/?b=" + strings.Repeat("x", 300) + "&a=1", want: keyStart + boundKeySegment("a=1&b="+strings.Repeat("x", 300)) + keyNoHeaders},
-		// maxQueryParams parameters in maxQueryBufferSize bytes are still sorted; a query past either bound is keyed as sent.
-		{name: "params_at_bound", uri: "/?" + strings.Repeat("b&", maxQueryParams-1) + "a", want: keyStart + boundKeySegment("a"+strings.Repeat("&b", maxQueryParams-1)) + keyNoHeaders},
-		{name: "params_past_bound", uri: "/?" + strings.Repeat("b&", maxQueryParams) + "a", want: keyStart + boundKeySegment(strings.Repeat("b&", maxQueryParams)+"a") + keyNoHeaders},
-		{name: "query_at_bound", uri: "/?b=" + strings.Repeat("x", maxQueryBufferSize-6) + "&a=1", want: keyStart + boundKeySegment("a=1&b="+strings.Repeat("x", maxQueryBufferSize-6)) + keyNoHeaders},
-		{name: "query_past_bound", uri: "/?b=" + strings.Repeat("x", maxQueryBufferSize-5) + "&a=1", want: keyStart + boundKeySegment("b="+strings.Repeat("x", maxQueryBufferSize-5)+"&a=1") + keyNoHeaders},
+		{name: "query_escape", uri: "/?k=a b&z=%2F&k=z", want: keyStart + "k=a b&z=%2F&k=z" + keyNoHeaders},
+		{name: "query_spellings", uri: "/?b=%41&a=x+y&a=x%20y&b=A", want: keyStart + "b=%41&a=x+y&a=x%20y&b=A" + keyNoHeaders},
+		{name: "query_delims", uri: `/?b=x|y&a=1:2&c=\`, want: keyStart + `b=x\py&a=1\c2&c=\\` + keyNoHeaders},
+		{name: "long_query", uri: "/?b=" + strings.Repeat("x", 300) + "&a=1", want: keyStart + boundKeySegment("b="+strings.Repeat("x", 300)+"&a=1") + keyNoHeaders},
 		{name: "with_headers", uri: "/?foo=bar", headers: map[string]string{"Accept": "text/html", "Accept-Encoding": "gzip"}, want: keyStart + "foo=bar|h=accept:1|text/html|accept-encoding:1|gzip|accept-language:0"},
 		{name: "with_cookie", uri: "/?foo=bar", cookie: "sid=abc123", keyCooks: []string{"sid"}, want: keyStart + "foo=bar" + keyNoHeaders + "|c=sid:sha256:ccfb62d77d32969b64f7920fe3bfb66c50cbf9e9faea6f69222c34c7e5f30627"},
 		// A missing and an empty cookie leave nothing after the name, and share a key.
@@ -85,8 +79,10 @@ func keygenCorpus() []keygenCase {
 		{name: "post_body_metadata", uri: "/", method: fiber.MethodPost, body: "{}", headers: map[string]string{"Content-Type": "application/json"}, want: keyStart + keyNoHeaders + "|m=0|1|application/json|b={}"},
 		{name: "post_no_body", uri: "/", method: fiber.MethodPost, want: keyStart + keyNoHeaders},
 		{name: "get_body", uri: "/", body: "foo=bar", want: keyStart + keyNoHeaders + "|m=0|0|b=foo=bar"},
-		{name: "get_encoding_no_body", uri: "/", headers: map[string]string{"Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|0|b="},
-		{name: "get_encoding_empty_no_body", uri: "/", headers: map[string]string{"Content-Encoding": ""}, want: keyStart + keyNoHeaders + "|m=1||0|b="},
+		// What a GET or HEAD with a coding and no body leaves is never stored, so its key does not hold the coding.
+		{name: "get_encoding_no_body", uri: "/", headers: map[string]string{"Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders},
+		{name: "post_encoding_no_body", uri: "/", method: fiber.MethodPost, headers: map[string]string{"Content-Encoding": "gzip"}, want: keyStart + keyNoHeaders + "|m=1|gzip|0|b="},
+		{name: "post_encoding_empty_no_body", uri: "/", method: fiber.MethodPost, headers: map[string]string{"Content-Encoding": ""}, want: keyStart + keyNoHeaders + "|m=1||0|b="},
 		// The authority: the port is part of it, its delimiters are escaped like
 		// every other segment's, and past the bound it is hashed rather than
 		// allowed to grow the key.
@@ -225,13 +221,13 @@ func Test_Cache_KeyFormatIsStable(t *testing.T) {
 		want        []string
 		disableVary bool
 	}{
-		{name: "anonymous", want: []string{"v8|manifest|v8|GET|/demo", "v8|GET|/demo"}},
+		{name: "anonymous", want: []string{"v9|manifest|v9|GET|/demo", "v9|GET|/demo"}},
 		{
 			name: "authenticated",
 			auth: "Bearer token",
-			want: []string{"v8|manifest|v8|GET|/demo|auth=" + authHash, "v8|GET|/demo|auth=" + authHash},
+			want: []string{"v9|manifest|v9|GET|/demo|auth=" + authHash, "v9|GET|/demo|auth=" + authHash},
 		},
-		{name: "vary disabled", disableVary: true, want: []string{"v8|GET|/demo"}},
+		{name: "vary disabled", disableVary: true, want: []string{"v9|GET|/demo"}},
 	}
 
 	for _, tc := range tests {
@@ -282,8 +278,8 @@ func Test_defaultKeyGenerator_KeysTheTargetAsSent(t *testing.T) {
 		keys    int
 		noQuery bool
 	}{
-		// The last two queries are one to the key, and no other two targets are.
-		{name: "query keyed", keys: len(paths) * (len(queries) - 1) * len(fragments)},
+		// No two targets are one to the key: the query is keyed as sent, in the order sent.
+		{name: "query keyed", keys: len(paths) * len(queries) * len(fragments)},
 		{name: "query left out", noQuery: true, keys: len(paths) * len(fragments)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -328,109 +324,6 @@ func Test_appendTargetAsSent_RewrittenQuery(t *testing.T) {
 			require.Equal(t, tc.want, string(got))
 		})
 	}
-}
-
-func Test_appendCanonicalQueryString_SharedKeyReadsTheSame(t *testing.T) {
-	t.Parallel()
-	parameters := []string{
-		"a=1", "a=2", "%61=3", "A=4", "a=b=5", "b", "b=", "+=6", "%20=7", "x%+=8", "x%%2B=9",
-		"%=10", "%zz=11", "", "=", "=12", "c%3D=13",
-	}
-	key := func(query string) string {
-		var uri fasthttp.URI
-		uri.SetQueryString(query)
-		return string(appendCanonicalQueryString(nil, &uri))
-	}
-	read := func(query string) string {
-		var args fasthttp.Args
-		args.Parse(query)
-		var names []string
-		for name := range args.All() {
-			if !slices.Contains(names, string(name)) {
-				names = append(names, string(name))
-			}
-		}
-		slices.Sort(names)
-		var values strings.Builder
-		for _, name := range names {
-			fmt.Fprintf(&values, "%q=%q;", name, args.PeekMulti(name))
-		}
-		return values.String()
-	}
-
-	sharing := map[string][]string{}
-	for i, first := range parameters {
-		for j, second := range parameters {
-			for k, third := range parameters {
-				if i != j && i != k && j != k {
-					query := first + "&" + second + "&" + third
-					sharing[key(query)] = append(sharing[key(query)], query)
-				}
-			}
-		}
-	}
-
-	shared := 0
-	for _, queries := range sharing {
-		for _, query := range queries[1:] {
-			shared++
-			require.ElementsMatch(t, strings.Split(queries[0], "&"), strings.Split(query, "&"), "%q and %q", queries[0], query)
-			require.Equal(t, read(queries[0]), read(query), "%q and %q", queries[0], query)
-		}
-	}
-	require.NotZero(t, shared, "parameters of different names share a key in either order")
-}
-
-func Test_appendCanonicalQueryString_KeepsTheOrderOfOneName(t *testing.T) {
-	t.Parallel()
-	var sent []string
-	byName := map[string][]string{}
-	for i, value := range "0123456789abcdefghijklmnopqrstuvwxyz" {
-		name := string("cab"[i%3])
-		sent = append(sent, name+"="+string(value))
-		byName[name] = append(byName[name], name+"="+string(value))
-	}
-
-	var uri fasthttp.URI
-	uri.SetQueryString(strings.Join(sent, "&"))
-	want := strings.Join(slices.Concat(byName["a"], byName["b"], byName["c"]), "&")
-	require.Equal(t, want, string(appendCanonicalQueryString(nil, &uri)))
-}
-
-// The decoded form keys refusal records: a parameter fasthttp drops, with neither a name nor a value, adds
-// nothing to it, so every spelling of a query reaches the record, while one with a value and no name stays.
-func Test_appendDecodedQueryString(t *testing.T) {
-	t.Parallel()
-	decoded := func(query string) string {
-		var uri fasthttp.URI
-		uri.SetQueryString(query)
-		return string(appendDecodedQueryString(nil, &uri))
-	}
-	for _, tc := range []struct{ query, same string }{
-		{query: "a=1&&b=2&", same: "a=1&b=2"},
-		{query: "=&a=1", same: "a=1"},
-		{query: "&=&", same: ""},
-		{query: "b=%41&a=1", same: "a=1&b=A"},
-	} {
-		t.Run(tc.query, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, decoded(tc.same), decoded(tc.query))
-		})
-	}
-	t.Run("a value without a name stays", func(t *testing.T) {
-		t.Parallel()
-		require.NotEqual(t, decoded("a=1"), decoded("a=1&=x"))
-	})
-}
-
-// Sequential: testing.AllocsPerRun panics in a parallel test. The fewest of many runs counts under -race.
-func Test_appendCanonicalQueryString_DoesNotAllocate(t *testing.T) {
-	var uri fasthttp.URI
-	uri.SetQueryString("q=hello+world&filter%5Bstatus%5D=active&page=2&sort=-created")
-	dst := make([]byte, 0, 512)
-
-	require.Zero(t, apptest.FewestAllocs(200, 1, func() { dst = appendCanonicalQueryString(dst[:0], &uri) }))
-	require.Equal(t, "filter%5Bstatus%5D=active&page=2&q=hello+world&sort=-created", string(dst))
 }
 
 // The escaping and bounding below are the reference implementations the key
@@ -570,6 +463,18 @@ func Test_appendCanonicalCookieSubset(t *testing.T) {
 		require.Equal(t, "a:sha256:"+authDigest("1")+"|b:sha256:"+authDigest("2")+"|c:", segment("a=1; b=2", "a", "b", "c"))
 		require.NotEqual(t, segment("a=1; b=2", "a", "b"), segment("a=2; b=1", "a", "b"))
 	})
+
+	// Bind().Cookie reads the last occurrence, in any letter case, so every one is keyed.
+	t.Run("every occurrence of the name in any case is keyed", func(t *testing.T) {
+		t.Parallel()
+		one := segment("currency=EUR", "currency")
+		for _, cookie := range []string{"currency=EUR; currency=JPY", "currency=; currency=JPY", "Currency=JPY", "currency=EUR; Currency=EUR"} {
+			got := segment(cookie, "currency")
+			require.NotEqual(t, one, got, cookie)
+			require.NotEqual(t, "currency:", got, cookie)
+		}
+		require.NotEqual(t, segment("currency=EUR; currency=JPY", "currency"), segment("currency=JPY; currency=EUR", "currency"))
+	})
 }
 
 func Test_Cache_KeyCookieValuesAreHashedInStorageKeys(t *testing.T) {
@@ -623,4 +528,24 @@ func Test_appendCanonicalCookieSubset_DoesNotAllocate(t *testing.T) {
 
 	cfg := &Config{KeyCookies: []string{"sid"}}
 	require.Zero(t, testing.AllocsPerRun(100, func() { dst = appendCanonicalCookieSubset(dst[:0], c, cfg) }))
+}
+
+// Sequential: testing.AllocsPerRun panics during a parallel test.
+func Test_connectionWithholdsHeader_DoesNotAllocate(t *testing.T) {
+	for _, connection := range []string{"", "keep-alive"} {
+		var h fasthttp.RequestHeader
+		if connection != "" {
+			h.Set(fiber.HeaderConnection, connection)
+		}
+		require.False(t, connectionWithholdsHeader(&h, true))
+		require.Zero(t, testing.AllocsPerRun(100, func() { connectionWithholdsHeader(&h, true) }), connection)
+	}
+}
+
+// Sequential: testing.AllocsPerRun panics during a parallel test.
+func Test_credentialsOf_DoesNotAllocate(t *testing.T) {
+	c, cfg := buildKeygenCtx(t, &keygenCase{uri: "/", headers: map[string]string{fiber.HeaderAuthorization: "Basic c2l0ZTpwYXNz"}, cookie: "session=a"})
+	creds := cfg.credentialsOf(c, []string{"cookie"}, true)
+	require.True(t, creds.selected)
+	require.Zero(t, testing.AllocsPerRun(100, func() { cfg.credentialsOf(c, []string{"cookie"}, true) }))
 }

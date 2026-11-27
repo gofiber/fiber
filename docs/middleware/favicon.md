@@ -6,7 +6,7 @@ id: favicon
 
 Favicon middleware for [Fiber](https://github.com/gofiber/fiber) that drops repeated `/favicon.ico` requests or serves a cached icon from memory. Mount it before your logger to suppress noisy requests and avoid disk reads.
 
-It handles only `GET`, `HEAD`, and `OPTIONS` to the configured URL; other methods return `405 Method Not Allowed`. A configured icon is always served as `image/x-icon` with the configured `Cache-Control`; without `File` or `Data`, requests for the URL are answered with `204 No Content`.
+It handles only `GET`, `HEAD`, and `OPTIONS` to the configured URL; other methods return `405 Method Not Allowed`. A configured icon is always served as `image/x-icon` with the configured `Cache-Control`; without `File` or `Data`, requests for the URL are answered with `204 No Content`. A request the server refused while reading it, such as one over `BodyLimit`, passes through untouched, so its error response does not carry the icon's `Cache-Control`.
 
 :::note
 This middleware only serves the default `/favicon.ico` (or a [custom URL](#config)). For multiple icons, use the Static middleware.

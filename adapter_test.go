@@ -890,6 +890,8 @@ func Test_Adapter_FastHTTP_KeepsTargetsThatAreNoPath(t *testing.T) {
 		{"asterisk-form", "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n", "*", StatusOK},
 		{"authority-form", "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n", "example.com:443", StatusOK},
 		{"authority-form with an IPv6 literal", "CONNECT [::1]:443 HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "[::1]:443", StatusOK},
+		{"no authority, a byte of UTF-8", "CONNECT \u00fcber HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
+		{"no authority, brackets", "CONNECT a[1] HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 		{"authority-form with an empty segment", "CONNECT //admin/data.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 		{"authority-form with an escaped slash", "CONNECT admin%2Fdata.txt HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 	} {
@@ -923,6 +925,8 @@ func Test_HTTPHandler_Direct_TargetsThatAreNoPath(t *testing.T) {
 		{"asterisk-form", "OPTIONS * HTTP/1.1\r\nHost: example.com\r\n\r\n", "/*|example.com", StatusOK},
 		{"authority-form", "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n", "/example.com:443|example.com:443", StatusOK},
 		{"authority-form with an IPv6 literal", "CONNECT [::1]:443 HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "/%5B::1%5D:443|[::1]:443", StatusOK},
+		{"no authority, a byte of UTF-8", "CONNECT \u00fcber HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
+		{"no authority, brackets", "CONNECT a[1] HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 		{"authority-form with a path", "CONNECT [::1]:443/x HTTP/1.1\r\nHost: [::1]:443\r\n\r\n", "", StatusNotFound},
 		{"origin-form with brackets", "GET /a[1] HTTP/1.1\r\nHost: example.com\r\n\r\n", "", StatusNotFound},
 	} {
@@ -1025,6 +1029,36 @@ func Test_Adapter_FastHTTP_UnescapePathRespellsTheLine(t *testing.T) {
 	require.Equal(t, "/a%2Cb/c:d?x=1", string(resp.Body()))
 }
 
+// Test_Adapter_UnescapePathParameters pins that under UnescapePath a fasthttp and a net/http route handler are answered
+// 404, as they are without it, for a "." or ".." segment that carries parameters and for a segment of parameters alone
+// before another, whether the ";" arrived raw or as "%3B": the router decodes it, and so does the handler, although
+// the line it is given spells it "%3B".
+func Test_Adapter_UnescapePathParameters(t *testing.T) {
+	t.Parallel()
+	for name, handler := range map[string]any{
+		"fasthttp": fasthttp.RequestHandler(echoRequestURI),
+		"net/http": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := io.WriteString(w, r.RequestURI)
+			assert.NoError(t, err)
+		}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := New(Config{UnescapePath: true})
+			app.Use(handler)
+
+			for _, target := range []string{"/a/..;/b", "/a/..%3B/b", "/a/.%3bx/b", "/;x/admin", "/%3Bx/admin"} {
+				require.Equal(t, StatusNotFound, serveRawTarget(t, app, target).StatusCode(), target)
+			}
+			for target, want := range map[string]string{"/a;b/c": "/a%3Bb/c", "/a%3Bb": "/a%3Bb", "/a/;x": "/a/%3Bx"} {
+				resp := serveRawTarget(t, app, target)
+				require.Equal(t, StatusOK, resp.StatusCode(), target)
+				require.Equal(t, want, string(resp.Body()), target)
+			}
+		})
+	}
+}
+
 // Test_Adapter_StrayPercent pins that a net/http route handler is answered 400, as net/http's own server answers it, for a
 // path whose "%" begins no escape, and that a fasthttp route handler is not: fasthttp decodes "/100%" and "/100%25" into
 // one path for it, so there is no second spelling to keep out, and it is given the line Routed spells for it. With
@@ -1124,6 +1158,51 @@ func Test_Adapter_FastHTTP_TimedOutHandlerKeepsTheRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(answer), "408 Request Timeout")
 	require.Equal(t, "/pub/x", apptest.Recv(t, read, 5*time.Second))
+}
+
+// A fasthttp route handler that answered with a timeout response of its own still runs on the request, so the
+// middleware before it is told so, as for timeout.New: the ctx is abandoned and Next returns the timeout status.
+func Test_Adapter_FastHTTP_TimedOutHandlerIsAbandoned(t *testing.T) {
+	t.Parallel()
+	for name, adapt := range map[string]func(fasthttp.RequestHandler) any{
+		"fasthttp.RequestHandler": func(h fasthttp.RequestHandler) any { return h },
+		"func(*fasthttp.RequestCtx) error": func(h fasthttp.RequestHandler) any {
+			return func(ctx *fasthttp.RequestCtx) error { h(ctx); return nil }
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			wrote := make(chan struct{})
+			slow := fasthttp.TimeoutHandler(func(ctx *fasthttp.RequestCtx) {
+				time.Sleep(150 * time.Millisecond)
+				ctx.SetBodyString("late")
+				close(wrote)
+			}, 20*time.Millisecond, "timeout")
+			type outcome struct {
+				err       error
+				abandoned bool
+			}
+			seen := make(chan outcome, 1)
+			app := New()
+			app.Use(func(c Ctx) error {
+				err := c.Next()
+				seen <- outcome{err: err, abandoned: c.IsAbandoned()}
+				return err
+			})
+			app.Get("/", adapt(slow))
+
+			conn := apptest.Dial(t, apptest.Serve(t, app, ListenConfig{DisableStartupMessage: true}))
+			_, err := io.WriteString(conn, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+			require.NoError(t, err)
+			answer, err := io.ReadAll(conn)
+			require.NoError(t, err)
+			require.Contains(t, string(answer), "408 Request Timeout")
+			got := apptest.Recv(t, seen, 5*time.Second)
+			require.True(t, got.abandoned)
+			require.Equal(t, NewError(StatusRequestTimeout), got.err)
+			apptest.Recv(t, wrote, 5*time.Second)
+		})
+	}
 }
 
 func Test_HTTPHandler_Direct_RestoresRequestLine(t *testing.T) {

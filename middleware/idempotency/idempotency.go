@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
+	"sync"
 
 	"github.com/gofiber/fiber/v3/internal/redact"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
 	"github.com/gofiber/fiber/v3/internal/errorreplay"
 	"github.com/gofiber/fiber/v3/internal/sizedstream"
+	"github.com/gofiber/fiber/v3/internal/unsent"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -27,7 +29,14 @@ type contextKey int
 const (
 	localsKeyIsFromCache contextKey = iota //
 	localsKeyWasPutToCache
+	localsKeyHeld
 )
+
+// heldKeys is the keys a request holds the lock of, in any instance: one that reaches the middleware again with
+// such a key, by RestartRouting or a second registration, would otherwise wait on its own lock.
+type heldKeys struct{ keys []string }
+
+var heldKeysPool = sync.Pool{New: func() any { return new(heldKeys) }}
 
 // maxStoredStream is the longest stream of known length read into memory to store it.
 const maxStoredStream = 1 << 20
@@ -175,6 +184,12 @@ func New(config ...Config) fiber.Handler {
 			storageKey = entryKey[len(storagePrefix):]
 		}
 
+		// The pass that holds the lock stores the response. The keys are internal state, kept on the RequestCtx past Locals.
+		held, holding := c.RequestCtx().UserValue(localsKeyHeld).(*heldKeys)
+		if holding && slices.Contains(held.keys, storageKey) {
+			return c.Next()
+		}
+
 		// First-pass: if the idempotency key is in the storage, get and return the response
 		if ok, err := maybeWriteCachedResponse(c, entryKey); err != nil {
 			return fmt.Errorf("failed to write cached response at fastpath: %w", err)
@@ -185,7 +200,19 @@ func New(config ...Config) fiber.Handler {
 		if err := cfg.Lock.Lock(storageKey); err != nil {
 			return fmt.Errorf("failed to lock: %w", err)
 		}
+		if !holding {
+			held = acquireHeldKeys()
+			c.RequestCtx().SetUserValue(localsKeyHeld, held)
+		}
+		held.keys = append(held.keys, storageKey)
 		defer func() {
+			n := len(held.keys) - 1
+			held.keys[n] = ""
+			held.keys = held.keys[:n]
+			if !holding {
+				c.RequestCtx().SetUserValue(localsKeyHeld, nil)
+				heldKeysPool.Put(held)
+			}
 			if err := cfg.Lock.Unlock(storageKey); err != nil {
 				log.Errorf("[IDEMPOTENCY] failed to unlock key %q: %v", maskKey(key), err)
 			}
@@ -213,6 +240,11 @@ func New(config ...Config) fiber.Handler {
 		if err := c.Next(); err != nil {
 			// If the request handler returned an error, return it and skip idempotency
 			return err
+		}
+
+		// A dropped or hijacked connection is sent nothing, so there is no answer to replay.
+		if unsent.Is(c.RequestCtx()) {
+			return nil
 		}
 
 		// Body reads a stream to its end, maybe never, and keeps a read error as the body. One that
@@ -265,4 +297,11 @@ func New(config ...Config) fiber.Handler {
 
 		return nil
 	}
+}
+
+func acquireHeldKeys() *heldKeys {
+	if h, ok := heldKeysPool.Get().(*heldKeys); ok {
+		return h
+	}
+	return new(heldKeys)
 }

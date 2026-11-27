@@ -98,6 +98,7 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // DoRedirects performs the given http request and fills the given http response, following up to maxRedirectsCount redirects.
 // When the redirect count exceeds maxRedirectsCount, ErrTooManyRedirects is returned.
 // An error while following the chain resets the response, so no upstream answer goes out with it.
+// The response the chain ends with also gets the bare no-store, private and no-cache and the Vary names of the redirects followed.
 // This method can be used within a fiber.Handler
 //
 // Each redirect target is re-validated against the active SecurityPolicy.
@@ -114,36 +115,41 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 // cannot be rebound to a private IP between validation and connection.
 func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
 	policy := currentSecurityPolicy()
-	return doActionWithPolicy(c, addr, policy, nil, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
-		err := followRedirects(cli, req, resp, maxRedirectsCount, u, policy)
+	var carried hopCaching
+	err := doActionWithPolicy(c, addr, policy, nil, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, u *url.URL) error {
+		err := followRedirects(cli, req, resp, maxRedirectsCount, u, policy, &carried)
 		if err != nil {
 			// resp holds the hop the loop stopped at, unstripped: none of it is the client's.
-			resp.Reset()
+			resetUpstreamResponse(resp)
 		}
 		return err
 	}, clients...)
+	if err == nil {
+		// Once the upstream's hop-by-hop fields are gone: the strip would take a field it listed in Connection.
+		carried.apply(&c.Response().Header)
+	}
+	return err
 }
 
 // DoDeadline performs the given request and waits for response until the given deadline.
 // This method can be used within a fiber.Handler
 //
 // SSRF note: same protection as Do — up-front host validation plus the
-// dial-time validated-IP guard when AllowPrivateIPs is false.
+// dial-time validated-IP guard when AllowPrivateIPs is false. The deadline bounds its lookup too, which then fails with fasthttp.ErrTimeout.
 func DoDeadline(c fiber.Ctx, addr string, deadline time.Time, clients ...*fasthttp.Client) error {
-	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
+	send := func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
 		return cli.DoDeadline(req, resp, deadline)
-	}, clients...)
+	}
+	return doActionBy(c, addr, currentSecurityPolicy(), nil, deadline, send, clients...)
 }
 
 // DoTimeout performs the given request and waits for response during the given timeout duration.
 // This method can be used within a fiber.Handler
 //
 // SSRF note: same protection as Do — up-front host validation plus the
-// dial-time validated-IP guard when AllowPrivateIPs is false.
+// dial-time validated-IP guard when AllowPrivateIPs is false. The timeout bounds its lookup too, which then fails with fasthttp.ErrTimeout.
 func DoTimeout(c fiber.Ctx, addr string, timeout time.Duration, clients ...*fasthttp.Client) error {
-	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response, _ *url.URL) error {
-		return cli.DoTimeout(req, resp, timeout)
-	}, clients...)
+	return DoDeadline(c, addr, time.Now().Add(timeout), clients...)
 }
 
 // doActionFunc is the per-method callback driven by doActionWithPolicy.
@@ -166,6 +172,19 @@ func doActionWithPolicy(
 	addr string,
 	policy SecurityPolicy,
 	ip []byte,
+	action doActionFunc,
+	clients ...*fasthttp.Client,
+) error {
+	return doActionBy(c, addr, policy, ip, time.Time{}, action, clients...)
+}
+
+// doActionBy is doActionWithPolicy whose up-front lookup ends at deadline, unless zero.
+func doActionBy(
+	c fiber.Ctx,
+	addr string,
+	policy SecurityPolicy,
+	ip []byte,
+	deadline time.Time,
 	action doActionFunc,
 	clients ...*fasthttp.Client,
 ) error {
@@ -196,7 +215,7 @@ func doActionWithPolicy(
 	// callback in followRedirects, which inspects u.Host after the
 	// SetRequestURI write.
 	addrCopy := utils.CopyString(addr)
-	u, err := validateUpstream(addrCopy, policy, lookupsFor(cli))
+	u, err := validateUpstreamBy(addrCopy, policy, lookupsFor(cli), deadline)
 	if err != nil {
 		return err
 	}
@@ -207,12 +226,15 @@ func doActionWithPolicy(
 	originalURL := utils.CopyString(c.OriginalURL())
 	// fasthttp rewrote the Host header to the upstream's; put the client's back for later middleware.
 	originalHost := utils.CopyBytes(req.Header.Host())
+	// The URI goes back as it is now: parsed from the line again, it would lose what a handler set in the query.
+	originalURI := wiretarget.SaveURI(c.RequestCtx())
 	defer func() {
-		// The Host header first: an origin-form target that begins with "//" is read by it again.
 		req.Header.SetHostBytes(originalHost)
-		wiretarget.RestoreTarget(c.RequestCtx(), originalURL)
+		wiretarget.RestoreURI(c.RequestCtx(), originalURL, originalURI)
 	}()
 
+	// The request is rewritten for the upstream from here on: a value a handler read before keeps its bytes.
+	fieldname.Detach(&req.Header)
 	req.SetRequestURI(u.String())
 	// SetScheme takes the string directly (fasthttp appends its bytes),
 	// avoiding the per-request []byte(u.Scheme) allocation. Re-applying
@@ -225,6 +247,12 @@ func doActionWithPolicy(
 	if !fieldname.DropTrailers(&req.Header) {
 		return fiber.ErrRequestHeaderFieldsTooLarge
 	}
+	if err := screenFieldNames(&req.Header, ip != nil); err != nil {
+		return err
+	}
+	if err := lastTraceHop(req, normalized); err != nil {
+		return err
+	}
 	if !policy.KeepHopByHopHeaders && !stripHopByHopRequestHeaders(req, normalized) {
 		return fiber.ErrRequestHeaderFieldsTooLarge
 	}
@@ -233,6 +261,9 @@ func doActionWithPolicy(
 	}
 	if !keepForwardingOrder(req) {
 		return fiber.ErrRequestHeaderFieldsTooLarge
+	}
+	if !sendable(c) {
+		return fiber.ErrBadRequest
 	}
 	// The upstream connection speaks HTTP/1.1: reset a protocol token
 	// inherited from the inbound request (e.g. "HTTP/2" propagated by the
@@ -263,17 +294,18 @@ func doActionWithPolicy(
 	}
 	// A client that streams response bodies hands the upstream's trailer section to the response after
 	// the action returned: such a response is read into one of the proxy's own, see upstreamResponse.
-	upstream := upstreamResponse(cli.StreamResponseBody, res)
+	upstream := upstreamResponse(streamsResponses(cli), res)
 	return adoptUpstreamResponse(res, upstream, action(cli, req, upstream, u), policy, cli.MaxResponseBodySize)
 }
 
 // forwardRouted forwards the routed path to base for DomainForward and BalancerForward. A path
 // an upstream could read as another (wiretarget.SegmentsAsRouted) is a 400 unless the policy
-// allows that spelling (AllowAmbiguousSlashes, AllowPathParameters).
+// allows that spelling (AllowAmbiguousSlashes, AllowPathParameters). So is one the target could only
+// spell as another path (wiretarget.RoutedAsMatched), whatever the policy.
 func forwardRouted(c fiber.Ctx, base *url.URL, clients ...*fasthttp.Client) error {
-	target := wiretarget.Routed(c)
+	target, ok := wiretarget.RoutedAsMatched(c)
 	active := currentSecurityPolicy()
-	if !segmentsAsRouted(target, active) {
+	if !ok || !segmentsAsRouted(target, active) {
 		return fiber.ErrBadRequest
 	}
 	return forwardWithRealIP(c, joinUpstreamPath(base, target), active, clients...)

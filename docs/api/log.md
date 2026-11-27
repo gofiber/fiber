@@ -358,6 +358,8 @@ var (
 
 Redacted values keep their first 4 bytes followed by `****`; a non-empty value shorter than 8 bytes is replaced by `****` entirely, and an empty value stays empty.
 
+A tag placed right behind a `=`, as in `KeyValueFormat`, is the value of a key/value field. Such a value may come from the client, as the request ID from `X-Request-ID` does, so when it holds a space, a tab, `=` or `"` it is written as a Go quoted string and stays one field: the request ID `6f1c2a username=admin` is logged as `request-id="6f1c2a username=admin"`. Any other value is written as is, and a tag elsewhere, such as the one in `RequestIDFormat`, is never quoted.
+
 :::caution
 `${value:KEY}` looks up arbitrary context values. CR, LF, NUL, and other ASCII control bytes (except tab) are replaced with spaces before they reach the log line, so attacker-controlled values cannot forge log lines via header smuggling. The lookup still writes the value verbatim apart from that scrub — strip or hash sensitive fields before storing them on the context if you do not want them in operator logs.
 :::

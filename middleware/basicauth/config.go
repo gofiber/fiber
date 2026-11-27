@@ -67,14 +67,14 @@ type Config struct {
 	Authorizer func(string, string, fiber.Ctx) bool
 
 	// Unauthorized defines the response body for unauthorized responses.
-	// By default it will return with a 401 Unauthorized and the correct WWW-Auth header
+	// It runs with the 401 status, WWW-Authenticate, Cache-Control: no-store and Vary already set.
 	//
 	// Optional. Default: nil
 	Unauthorized fiber.Handler
 
 	// BadRequest defines the response body for malformed Authorization headers,
 	// a request carrying the field on more than one line included.
-	// By default it will return with a 400 Bad Request without the WWW-Authenticate header.
+	// It runs with the 400 status already set, and no WWW-Authenticate header.
 	//
 	// Optional. Default: nil
 	BadRequest fiber.Handler
@@ -165,24 +165,32 @@ func configDefault(config ...Config) Config {
 		}
 	}
 
-	if cfg.Unauthorized == nil {
-		cfg.Unauthorized = func(c fiber.Ctx) error {
-			header := `Basic realm="` + quotedstring.Escape(cfg.Realm) + `"`
-			if cfg.Charset != "" {
-				header += `, charset="` + quotedstring.Escape(cfg.Charset) + `"`
-			}
-			c.Set(fiber.HeaderWWWAuthenticate, header)
-			c.Set(fiber.HeaderCacheControl, "no-store")
-			// Added to the Vary an earlier middleware may have set, not replacing it.
-			c.Vary(fiber.HeaderAuthorization)
+	// A custom handler starts from the refusal's status and challenge, which it may replace:
+	// one that only writes a body, as c.SendFile does, would otherwise answer 200.
+	challenge := `Basic realm="` + quotedstring.Escape(cfg.Realm) + `"`
+	if cfg.Charset != "" {
+		challenge += `, charset="` + quotedstring.Escape(cfg.Charset) + `"`
+	}
+	unauthorized := cfg.Unauthorized
+	cfg.Unauthorized = func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderWWWAuthenticate, challenge)
+		c.Set(fiber.HeaderCacheControl, "no-store")
+		// Added to the Vary an earlier middleware may have set, not replacing it.
+		c.Vary(fiber.HeaderAuthorization)
+		if unauthorized == nil {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
+		c.Status(fiber.StatusUnauthorized)
+		return unauthorized(c)
 	}
 
-	if cfg.BadRequest == nil {
-		cfg.BadRequest = func(c fiber.Ctx) error {
+	badRequest := cfg.BadRequest
+	cfg.BadRequest = func(c fiber.Ctx) error {
+		if badRequest == nil {
 			return c.SendStatus(fiber.StatusBadRequest)
 		}
+		c.Status(fiber.StatusBadRequest)
+		return badRequest(c)
 	}
 	return cfg
 }

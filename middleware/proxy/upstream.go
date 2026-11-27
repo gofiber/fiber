@@ -1,18 +1,24 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/gofiber/fiber/v3/internal/escapedpath"
+	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/utils/v2"
 )
+
+var errMalformedAddress = errors.New("malformed address")
 
 // parseUpstream returns the parsed url.URL for raw. Hosts without an
 // explicit scheme default to http:// to match the historical Balancer
 // behavior where bare "host:port" entries were accepted. A parse failure is
-// ErrUpstreamHostInvalid wrapping the *url.Error.
+// ErrUpstreamHostInvalid wrapping the *url.Error, without the address in it.
 func parseUpstream(raw string) (*url.URL, error) {
 	raw = utils.TrimSpace(raw)
 	if raw == "" {
@@ -23,36 +29,20 @@ func parseUpstream(raw string) (*url.URL, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
+		// The address may hold credentials, and the default error handler answers with this text. The cause
+		// can quote a part of it, as `invalid port ":s3cret"` for a password before a "/".
+		if urlErr, ok := errors.AsType[*url.Error](err); ok {
+			urlErr.URL, urlErr.Err = redact.Placeholder, errMalformedAddress
+		}
 		return nil, fmt.Errorf("%w: %w", ErrUpstreamHostInvalid, err)
 	}
 	// net/url ignores a RawPath it would not write ("/café") and writes Path again, which turns a
 	// "%2F" into a separator. Escaping only the bytes a path cannot hold keeps every escape the
 	// address had, and gives EscapedPath, and so String, a RawPath it writes as it is.
-	if !rawPathValid(u.RawPath) {
-		u.RawPath = repairRawPath(u.RawPath, u.Path)
+	if !escapedpath.RawPathValid(u.RawPath) {
+		u.RawPath = escapedpath.RepairRawPath(u.RawPath, u.Path)
 	}
 	return u, nil
-}
-
-// repairRawPath escapes the bytes of raw that a path cannot hold raw, as "%XX", and leaves the
-// escapes it has alone. url.Parse made sure raw decodes to path, and each byte is written as its own
-// escape, so the result does too. It returns "" when that is what String writes for path anyway.
-func repairRawPath(raw, path string) string {
-	const upperHex = "0123456789ABCDEF"
-	b := make([]byte, 0, len(raw)+8)
-	for i := 0; i < len(raw); i++ {
-		c := raw[i]
-		if rawPathValid(raw[i : i+1]) {
-			b = append(b, c)
-			continue
-		}
-		b = append(b, '%', upperHex[c>>4], upperHex[c&15])
-	}
-	repaired := string(b)
-	if repaired == (&url.URL{Path: path}).EscapedPath() {
-		return ""
-	}
-	return repaired
 }
 
 // validateUpstream parses raw, enforces the scheme allowlist, and unless
@@ -62,6 +52,11 @@ func repairRawPath(raw, path string) string {
 // resolver returns a mix of public and private IPs. A non-nil lookups may answer for the
 // hostname from a recent lookup; see validateHostForSSRF.
 func validateUpstream(raw string, policy SecurityPolicy, lookups *lookupCache) (*url.URL, error) {
+	return validateUpstreamBy(raw, policy, lookups, time.Time{})
+}
+
+// validateUpstreamBy is validateUpstream whose lookup ends at deadline, unless zero.
+func validateUpstreamBy(raw string, policy SecurityPolicy, lookups *lookupCache, deadline time.Time) (*url.URL, error) {
 	u, err := parseAllowedUpstream(raw, policy)
 	if err != nil {
 		return nil, err
@@ -69,7 +64,7 @@ func validateUpstream(raw string, policy SecurityPolicy, lookups *lookupCache) (
 	if policy.AllowPrivateIPs {
 		return u, nil
 	}
-	if err := validateHostForSSRF(u.Hostname(), lookups); err != nil {
+	if err := validateHostBy(u.Hostname(), lookups, deadline); err != nil {
 		return nil, err
 	}
 	return u, nil
@@ -223,21 +218,10 @@ func joinURLPath(out, base, target *url.URL) {
 // escapedPath is u.EscapedPath() without the unescape it checks RawPath with: url.Parse made sure
 // RawPath decodes to Path, so only its bytes are left to check.
 func escapedPath(u *url.URL) string {
-	if u.RawPath != "" && rawPathValid(u.RawPath) {
+	if u.RawPath != "" && escapedpath.RawPathValid(u.RawPath) {
 		return u.RawPath
 	}
 	return u.EscapedPath()
-}
-
-// rawPathValid reports whether raw holds only the bytes net/url's validEncoded accepts in a path.
-func rawPathValid(raw string) bool {
-	for i := 0; i < len(raw); i++ {
-		c := raw[i]
-		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && strings.IndexByte("-._~!$&'()*+,;=:@[]%/", c) < 0 {
-			return false
-		}
-	}
-	return true
 }
 
 // baseIsPlainOrigin reports whether base carries only a scheme + host

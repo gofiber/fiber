@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -17,6 +18,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/redact"
 
 	"github.com/gofiber/utils/v2"
+	utilsstrings "github.com/gofiber/utils/v2/strings"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
@@ -26,6 +28,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/headerlookup"
 	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/sizedstream"
+	"github.com/gofiber/fiber/v3/internal/unsent"
 	"github.com/gofiber/fiber/v3/log"
 )
 
@@ -91,13 +94,29 @@ const (
 // response that varies on a request header an inner middleware added, rewrote or
 // removed is no longer stored, as its key held the value the client sent while the
 // page was built from another. One the earlier rule stored would still be served,
-// on a store that survived the upgrade, to every client sending that value. v8:
-// the key holds the raw target and a bodyless Content-Encoding; entries carry keptHeaders and stored. Bump
-// this whenever what a key stands for, or what its entry carries, changes; the
-// cost is one cold cache after a deploy. Additive bookkeeping fields such as
+// on a store that survived the upgrade, to every client sending that value. v8: the
+// query and the cookies are keyed as received, an external Storage's body is
+// stamped with its entry's generation, and StoreResponseHeaders leaves out the
+// lines of middleware before the cache. v9: the key holds the raw target, the body
+// of every request that carries one and a bodyless Content-Encoding; entries carry
+// keptHeaders and stored. Bump this whenever what a key stands for, or what its entry
+// carries, changes; the cost is one cold cache after a deploy. Additive bookkeeping fields such as
 // heapgen need no bump: old entries decode with generation zero, and older
 // readers skip the new field without changing the response or key semantics.
-const cacheKeyVersion = "v8"
+const cacheKeyVersion = "v9"
+
+// bodyStampLen is the size of the generation an external Storage keeps in front of a body. A Storage
+// takes the body and the metadata in two unlocked writes, so two stores of one key can leave one's body
+// beside the other's metadata.
+const bodyStampLen = 8
+
+// stampedBody returns the body in raw, and false unless raw was stored for the entry of generation gen.
+func stampedBody(raw []byte, gen uint64) ([]byte, bool) {
+	if len(raw) < bodyStampLen || binary.BigEndian.Uint64(raw) != gen {
+		return nil, false
+	}
+	return raw[bodyStampLen:], true
+}
 
 // The keys derived from an entry key sit right after the version, where no entry
 // key goes: those continue with their method.
@@ -766,8 +785,11 @@ func New(config ...Config) fiber.Handler {
 			// Frees the lock on a panic; a no-op after the explicit unlocks below.
 			defer guard.Unlock()
 
-			// Cache Entry found
-			settle(ts)
+			// Cache Entry found. An invalidated one is deleted below, not set aside: that would keep it stored
+			// unless the origin's answer replaced it.
+			if !invalidated {
+				settle(ts)
+			}
 
 			if e != nil && e.ttl == 0 && e.exp != 0 && ts >= e.exp {
 				guard.Unlock()
@@ -830,11 +852,12 @@ func New(config ...Config) fiber.Handler {
 					(reqDirectives.maxStaleAny || (reqDirectives.maxStaleSet && staleness <= reqDirectives.maxStale)) &&
 					(cfg.AllowStaleCredentialResponses || (!hasAuthorization && !holdsCredential()))
 
-				if entryExpired && e.revalidate {
-					setAside()
+				if !invalidated {
+					if entryExpired && e.revalidate {
+						setAside()
+					}
+					handleMinFresh(ts)
 				}
-
-				handleMinFresh(ts)
 
 				if revalidate {
 					guard.Unlock()
@@ -929,7 +952,15 @@ func New(config ...Config) fiber.Handler {
 							}
 							return false, nil
 						}
-						e.body = rawBody
+						body, own := stampedBody(rawBody, e.heapgen)
+						if !own {
+							// Another store's body: a miss, never two responses mixed. Nothing is deleted, as
+							// that store may yet write its metadata.
+							manager.release(e)
+							e = nil
+							break
+						}
+						e.body = body
 					} else {
 						guard.Unlock()
 					}
@@ -1103,6 +1134,38 @@ func New(config ...Config) fiber.Handler {
 			return lookupErr
 		}
 
+		// manager.release is a no-op for in-memory storage, so no guard.
+		releaseEntry := func() {
+			if e != nil {
+				manager.release(e)
+				e = nil
+			}
+		}
+
+		// The next two gates only guard what the handler leaves: a hit above served what the key selects.
+		// Ctx.Body answers a coding it cannot undo with a status and text of its own, and the key of a GET
+		// or HEAD does not hold the coding: what such a request leaves is not the URL's response. Every line:
+		// fieldname.First reads an empty first line in a slot fasthttp grew into as no line at all.
+		if (requestMethod == fiber.MethodGet || requestMethod == fiber.MethodHead) &&
+			slices.ContainsFunc(fieldname.Lines(&c.Request().Header, fiber.HeaderContentEncoding, canonical),
+				func(v []byte) bool { return len(v) > 0 }) {
+			releaseEntry()
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return c.Next()
+		}
+
+		// A header listed in Connection is for this hop alone, so a forwarding handler such as proxy drops
+		// it (RFC 9110 section 7.6.1) while the key and Vary hold it as sent.
+		if connectionWithholdsHeader(&c.Request().Header, canonical) {
+			releaseEntry()
+			if err := c.Next(); err != nil {
+				return err
+			}
+			// Set after the handler: proxy replaces the response headers with the upstream's.
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return nil
+		}
+
 		entryFound := e != nil || revalidate
 
 		// Read before the handler can clear the credential or rewrite the path.
@@ -1171,14 +1234,6 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// manager.release is a no-op for in-memory storage, so no guard.
-		releaseEntry := func() {
-			if e != nil {
-				manager.release(e)
-				e = nil
-			}
-		}
-
 		// dropReplacement removes what a concurrent request stored under the key meanwhile, and its heap node.
 		dropReplacement := func() {
 			current, err := manager.get(reqCtx, key)
@@ -1221,11 +1276,12 @@ func New(config ...Config) fiber.Handler {
 		if cfg.MaxBytes > 0 {
 			tag = purgeTag{slot: purges.slot(c.Host(), c.Path()), stored: began}
 		}
-		// Whether the query is keyed as sent (see sortedQueryParams), read before the handler can rewrite it.
-		pastBounds := false
-		if cfg.usesDefaultKeyGenerator && !cfg.DisableQueryKeys {
-			_, within := sortedQueryParams(utils.UnsafeString(c.Request().URI().QueryString()))
-			pastBounds = !within
+
+		// Middleware before the cache runs again on a hit: its lines, copied before handlers can reuse the
+		// buffers, are not stored unless something behind the cache changed them.
+		var upstream map[string][]string
+		if cfg.StoreResponseHeaders {
+			upstream = storableFieldLines(&c.Response().Header)
 		}
 
 		// Continue stack, return err to Fiber if exist
@@ -1260,6 +1316,12 @@ func New(config ...Config) fiber.Handler {
 		// The exception is a refusal, when the request found an entry.
 		status := c.Res().StatusCode()
 		refused := foundAtLookup && refusesCredential(status)
+
+		// A dropped or hijacked connection is sent nothing: only a refusal on it is a verdict.
+		if !refused && unsent.Is(c.RequestCtx()) {
+			markUnreachable()
+			return nil
+		}
 
 		// The origin accepting a credential recorded as refused ends the record, stored or not.
 		if refusalRecorded && acceptsCredential(status) {
@@ -1309,6 +1371,15 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// Keyed off the collected cookies, a page built from a cookie fasthttp's collection drops would
+		// be stored for the requests that never sent it.
+		keyReadsCookies := (cfg.usesDefaultKeyGenerator && (len(cfg.KeyCookies) > 0 || slices.Contains(cfg.KeyHeaders, "cookie"))) ||
+			(!cfg.DisableVaryHeaders && slices.Contains(respVaryNames, "cookie"))
+		if keyReadsCookies && droppedReceivedCookie(c.Request()) {
+			markUnreachable()
+			return nil
+		}
+
 		shouldStoreVaryManifest := !cfg.DisableVaryHeaders && len(respVaryNames) > 0
 		entryManifest := "" // the manifest the entry is stored under, dropped with the last such entry
 		if !cfg.DisableVaryHeaders && len(respVaryNames) > 0 {
@@ -1339,14 +1410,6 @@ func New(config ...Config) fiber.Handler {
 			key = baseKey
 		}
 
-		// A refusal record reaches every spelling of a query only within the bounds a key sorts its
-		// parameters in (see appendRecordKey), so a response that may be a credential's is not stored
-		// past them, where a refusal recorded at another spelling would not end it.
-		if pastBounds && cfg.mayKeyCredential(hasAuthorization, respVaryNames) {
-			markUnreachable()
-			return nil
-		}
-
 		// unreachable marks the response uncacheable and hands back any entry still
 		// held from the lookup: each decision below is a decision not to store, so
 		// the unmarshalled copy would otherwise be dropped rather than pooled.
@@ -1359,7 +1422,8 @@ func New(config ...Config) fiber.Handler {
 		// A cookie personalizes the response for the one client that caused this
 		// miss, and the body is the payload. Stricter than the test above: RFC 9111
 		// §3.5 allows must-revalidate on a cache that re-checks, and this never does.
-		if !allowsSharedCacheStorage(respCacheControl) && responseSetsCookie(&c.Response().Header, respCanonical) {
+		if !allowsSharedCacheStorage(respCacheControl) &&
+			(responseSetsCookie(&c.Response().Header, respCanonical) || personalheader.ResponseMarked(c.RequestCtx())) {
 			markUnreachable()
 			return nil
 		}
@@ -1404,7 +1468,14 @@ func New(config ...Config) fiber.Handler {
 		releaseEntry()
 		e = manager.acquire()
 		// Cache response
-		e.body = utils.CopyBytes(c.Response().Body())
+		var stamped []byte // an external Storage's body, behind room for its generation
+		if cfg.Storage != nil {
+			stamped = make([]byte, bodyStampLen+len(c.Response().Body()))
+			copy(stamped[bodyStampLen:], c.Response().Body())
+			e.body = stamped[bodyStampLen:]
+		} else {
+			e.body = utils.CopyBytes(c.Response().Body())
+		}
 		e.status = status
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
@@ -1461,10 +1532,22 @@ func New(config ...Config) fiber.Handler {
 		// the entry is served to every client that hits it, so it is not kept, as
 		// Set-Cookie is not.
 		personal := personalheader.Marked(c.RequestCtx())
+		var downstream map[string][]string
+		if len(upstream) > 0 {
+			downstream = storableFieldLines(&c.Response().Header)
+		}
 		for key, value := range c.Response().Header.All() {
 			if isIgnoredHeader(key) || personal.Has(key) || (!cfg.StoreResponseHeaders && !isKeptHeader(key)) ||
 				(connection != "" && headerlist.ContainsFold(connection, utils.UnsafeString(key))) {
 				continue
+			}
+			// Whole fields: a hit clears a stored name before appending its lines. One that restricts the body is
+			// kept whoever wrote it, as a hit sends it with the body it was stored with.
+			if len(upstream) > 0 && !isKeptHeader(key) {
+				name := utilsstrings.ToLower(string(key))
+				if lines, ok := upstream[name]; ok && slices.Equal(lines, downstream[name]) {
+					continue
+				}
 			}
 
 			e.headers = append(e.headers, cachedHeader{
@@ -1815,7 +1898,8 @@ func New(config ...Config) fiber.Handler {
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			if err := manager.setRaw(reqCtx, bodyKey(key), e.body, storageExpiration); err != nil {
+			binary.BigEndian.PutUint64(stamped, e.heapgen)
+			if err := manager.setRaw(reqCtx, bodyKey(key), stamped, storageExpiration); err != nil {
 				return notStored(err, cleanupOnStoreError(reqCtx, true, false))
 			}
 			rawWritten = true

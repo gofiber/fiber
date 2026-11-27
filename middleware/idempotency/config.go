@@ -20,7 +20,7 @@ type Config struct {
 
 	// Storage stores response data by idempotency key.
 	//
-	// Optional. Default: an in-memory storage for this process only.
+	// Optional. Default: an in-memory storage for this process only, without a size limit.
 	Storage fiber.Storage
 
 	// Next defines a function to skip this middleware when returned true.

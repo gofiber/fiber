@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"io"
 
 	"github.com/valyala/fasthttp"
@@ -26,7 +27,7 @@ func upstreamResponse(streams bool, res *fasthttp.Response) *fasthttp.Response {
 // adoptUpstreamResponse readies upstream, the response the client filled with err as the outcome, as res, the
 // client's: sanitized and, when upstream is the proxy's own, its header section copied over and its body read
 // from it through an upstreamBody, which releases it once the body has been sent, or moved over without a copy
-// when the client buffered the body after all. upstream is released on an error.
+// when the client buffered the body after all. On an error res is emptied and upstream, if the proxy's own, released.
 //
 // A body the client streams is held to limit bytes when that is positive, which fasthttp does not do for one:
 // it ignores a client's MaxResponseBodySize for a body it hands over as a stream. A length the response declares
@@ -37,6 +38,9 @@ func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy S
 		err = sanitizeUpstreamResponse(upstream, policy, except...)
 	}
 	if upstream == res {
+		if err != nil {
+			resetUpstreamResponse(res)
+		}
 		return err
 	}
 	if err == nil && limit > 0 && upstream.IsBodyStream() && upstream.Header.ContentLength() > limit {
@@ -44,6 +48,8 @@ func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy S
 	}
 	if err != nil {
 		fasthttp.ReleaseResponse(upstream)
+		// fasthttp empties a response it fills before sending, so res ends up empty on an error either way.
+		resetUpstreamResponse(res)
 		return err
 	}
 	upstream.Header.CopyTo(&res.Header)
@@ -56,6 +62,16 @@ func adoptUpstreamResponse(res, upstream *fasthttp.Response, err error, policy S
 	}
 	res.SetBodyStream(&upstreamBody{Reader: upstream.BodyStream(), upstream: upstream, limit: int64(limit)}, upstream.Header.ContentLength())
 	return nil
+}
+
+// resetUpstreamResponse empties a failed upstream response, whose fields were neither stripped nor seen by
+// ModifyResponse, keeping the app's choice of no default Content-Type.
+func resetUpstreamResponse(res *fasthttp.Response) {
+	// The option has no getter: without a Content-Type, one is reported only where the default is added.
+	res.Header.SetContentTypeBytes(nil)
+	noDefaultContentType := len(res.Header.ContentType()) == 0
+	res.Reset()
+	res.Header.SetNoDefaultContentType(noDefaultContentType)
 }
 
 // moveBody gives res the buffered body of upstream without copying it: res takes upstream's buffer and
@@ -75,33 +91,34 @@ func moveBody(res, upstream *fasthttp.Response) {
 // upstreamBody is the body of a streamed upstream response, read from the response the client streams into
 // and released with it once it has been sent, which closes the stream and so releases its connection. It
 // delivers at most limit bytes when that is positive, and then fails with fasthttp.ErrBodyTooLarge instead of
-// the byte past it.
+// the byte past it. The failure of a read, that one or the upstream's own, is kept: see failureStands.
 type upstreamBody struct {
 	io.Reader
 	upstream *fasthttp.Response
-	err      error // the failure a body past its limit keeps returning
+	err      error // the failure of a read, a body past its limit included, which the reads after it return too
 	limit    int64
 	read     int64
 }
 
 func (b *upstreamBody) Read(p []byte) (int, error) {
-	if b.limit <= 0 {
-		return b.Reader.Read(p) //nolint:wrapcheck // fasthttp expects the reader's own io.EOF
-	}
 	if b.err != nil {
 		return 0, b.err
 	}
 	// When p holds more than is left, one byte past it is asked for, to tell a body that ends at the
 	// limit from one that goes on. Written as room < len(p), which cannot overflow, for a limit near
 	// the largest int.
-	if room := b.limit - b.read; room < int64(len(p)) {
+	if room := b.limit - b.read; b.limit > 0 && room < int64(len(p)) {
 		p = p[:room+1]
 	}
 	n, err := b.Reader.Read(p)
 	b.read += int64(n)
-	if b.read > b.limit {
+	if b.limit > 0 && b.read > b.limit {
 		b.err = fasthttp.ErrBodyTooLarge
 		return n - 1, b.err
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		// Kept with or without a limit: fasthttp's Body hands the caller the error's text, not the error.
+		b.err = err
 	}
 	return n, err //nolint:wrapcheck // fasthttp expects the reader's own io.EOF
 }
@@ -111,12 +128,12 @@ func (b *upstreamBody) Close() error {
 	return nil
 }
 
-// failureStands reports whether res still carries the failure of a read of b past its limit instead of a
-// response the caller set after it: the stream itself, which would end the response early once it started, or
-// what fasthttp's Body leaves in its place, the error's text as the body, which would go out as the upstream's
-// response. A stream or a body set since is the caller's own and stays, as when one reads the stream and sends
-// a fallback for the failure it was handed. A body that is exactly the error's text cannot be told from what
-// Body left, so it counts as the failure: a caller that wants a status of its own returns an error.
+// failureStands reports whether res still carries the failure of a read of b instead of a response the caller
+// set after it: the stream itself, which would end the response early once it started, or what fasthttp's Body
+// leaves in its place, the error's text as the body, which would go out as the upstream's response. A stream or a body set since is the caller's own and
+// stays, as when one reads the stream and sends a fallback for the failure it was handed. A body that is
+// exactly the error's text cannot be told from what Body left, so it counts as the failure: a caller that
+// wants a status of its own returns an error.
 func (b *upstreamBody) failureStands(res *fasthttp.Response) bool {
 	if b.err == nil {
 		return false

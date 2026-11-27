@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -194,6 +195,34 @@ func Test_HTTPHandler_RefusesBackslashAndDotParams(t *testing.T) {
 	}
 }
 
+// Test_HTTPHandler_RefusesDotParams_UnescapePath pins the same under UnescapePath, for a ";" that arrived raw and for
+// one that arrived as "%3B". The router decodes either and the request line the handler is given spells both "%3B",
+// but the handler reads the ";" in URL.Path, and an httputil.ReverseProxy whose Rewrite or Director sets URL.Path
+// writes it raw for the upstream.
+func Test_HTTPHandler_RefusesDotParams_UnescapePath(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{UnescapePath: true})
+	app.Use("/admin", denyAll)
+	app.Use(HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, r.URL.Path) })))
+
+	for _, target := range []string{
+		"/public/..;/admin", "/public/..%3B/admin", "/public/..%3b/admin", "/public/.;x/admin", "/public/.%3Bx/admin",
+		"/public/..;jsessionid=1/admin", "/public/..%3Bjsessionid=1/admin", "/public/..;", "/public%2F..%3B/admin",
+		"/;x/admin", "/%3Bx/admin", "/public/;/admin", "/public/%3B/admin", "/public/;jsessionid=1/admin",
+		"/public/..\\admin", "/public/..%5Cadmin",
+	} {
+		fctx := rawCtx(t, app, target)
+		require.Equal(t, fiber.StatusNotFound, fctx.Response.StatusCode(), target)
+		require.NotContains(t, string(fctx.Response.Body()), "admin", target)
+	}
+	for target, routed := range map[string]string{
+		"/a;b/c": "/a;b/c", "/a%3Bb/c": "/a;b/c", "/m;x=1;y=2": "/m;x=1;y=2", "/..x;y/a": "/..x;y/a",
+		"/app/;jsessionid=1": "/app/;jsessionid=1", "/app/%3B": "/app/;", "/public/../a": "/a",
+	} {
+		adaptorTestRequireRawOK(t, app, target, routed)
+	}
+}
+
 func Test_HTTPHandler_RestoresRequestLine(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -348,9 +377,9 @@ func Test_FiberHandler_ConnectAuthorityForm(t *testing.T) {
 			t.Parallel()
 			rec := adaptorTestServe(tc.handler, apptest.Req(fiber.MethodConnect, tc.target))
 			require.Equal(t, http.StatusOK, rec.Code)
-			path, host, ok := strings.Cut(rec.Body.String(), "|")
+			gotPath, host, ok := strings.Cut(rec.Body.String(), "|")
 			require.True(t, ok, rec.Body.String())
-			require.Equal(t, tc.wantPath, strings.TrimPrefix(path, "/"))
+			require.Equal(t, tc.wantPath, strings.TrimPrefix(gotPath, "/"))
 			require.Equal(t, tc.wantHost, host)
 		})
 	}
@@ -368,11 +397,86 @@ func Test_requestTarget(t *testing.T) {
 
 	require.Empty(t, requestTarget(&http.Request{Method: http.MethodGet}))
 	require.Equal(t, "/a/b?x=1", requestTarget(&http.Request{Method: http.MethodGet, URL: &url.URL{Path: "/a/b", RawQuery: "x=1"}}))
+	require.Equal(t, "/users?x=1", requestTarget(&http.Request{Method: http.MethodGet, URL: &url.URL{Path: "users", RawQuery: "x=1"}}))
+	require.Equal(t, "*", requestTarget(&http.Request{Method: http.MethodOptions, URL: &url.URL{Path: "*"}}))
 	require.Equal(t, "/rpc", requestTarget(connect(&url.URL{Path: "/rpc"}, "backend.internal:443")))
 	require.Equal(t, "backend.internal:443", requestTarget(connect(&url.URL{Host: "backend.internal:443"}, "backend.internal:443")))
 	require.Equal(t, "other.internal:8443", requestTarget(connect(&url.URL{Host: "backend.internal:443"}, "other.internal:8443")))
 	require.Equal(t, "backend.internal:443", requestTarget(connect(&url.URL{Host: "backend.internal:443"}, "")))
 	require.Equal(t, "opaque.internal:443", requestTarget(connect(&url.URL{Opaque: "opaque.internal:443", Host: "backend.internal:443"}, "backend.internal:443")))
+}
+
+// Test_FiberHandler_RefusesOpaqueTarget pins that a request line net/http reads as an opaque URL, a scheme with
+// neither authority nor path behind it, is answered 400 as on Fiber's own server instead of routed as URL.Opaque.
+func Test_FiberHandler_RefusesOpaqueTarget(t *testing.T) {
+	t.Parallel()
+	h := func(c fiber.Ctx) error { return c.SendString(c.Path()) }
+	app := fiber.New()
+	app.All("/*", h)
+
+	for name, handler := range map[string]http.Handler{
+		"FiberApp": FiberApp(app), "FiberHandler": FiberHandler(h), "FiberHandlerFunc": FiberHandlerFunc(h),
+	} {
+		for _, tc := range []struct{ method, target, wantPath string }{
+			{method: fiber.MethodGet, target: "http:admin/users"},
+			{method: fiber.MethodPost, target: "mailto:admin/users?q=1"},
+			{method: fiber.MethodGet, target: "http:%61dmin/users"},
+			{method: fiber.MethodGet, target: "http:a/../admin/users"},
+			{method: fiber.MethodGet, target: "x:a//b/admin/users"},
+			{method: fiber.MethodGet, target: "/admin/users", wantPath: "/admin/users"},
+			{method: fiber.MethodGet, target: "http://example.com/admin/users", wantPath: "/admin/users"},
+			{method: fiber.MethodGet, target: "x:/admin/users", wantPath: "/admin/users"},
+			{method: fiber.MethodOptions, target: "*", wantPath: "/*"},
+			{method: fiber.MethodConnect, target: "example.com:443", wantPath: "/example.com:443"},
+		} {
+			t.Run(name+" "+tc.method+" "+tc.target, func(t *testing.T) {
+				t.Parallel()
+				var seen string
+				guard := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					seen = r.URL.Path
+					handler.ServeHTTP(w, r)
+				})
+				rec := adaptorTestServe(guard, apptest.Req(tc.method, tc.target))
+				if tc.wantPath == "" {
+					require.Empty(t, seen)
+					require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+					return
+				}
+				require.Equal(t, http.StatusOK, rec.Code)
+				require.Equal(t, tc.wantPath, "/"+strings.TrimPrefix(rec.Body.String(), "/"))
+				if tc.method != fiber.MethodConnect {
+					require.Equal(t, tc.wantPath, "/"+strings.TrimPrefix(seen, "/"))
+				}
+			})
+		}
+	}
+}
+
+// Test_FiberHandler_RootsStrippedPath pins that a path http.StripPrefix left without its leading slash is routed
+// as that path: fasthttp reads "x//h/admin/users" as the host "h" and the path "/admin/users".
+func Test_FiberHandler_RootsStrippedPath(t *testing.T) {
+	t.Parallel()
+	h := func(c fiber.Ctx) error { return c.SendString(c.Path() + "|" + c.OriginalURL() + "|" + c.Host()) }
+	app := fiber.New()
+	app.All("/*", h)
+
+	for name, handler := range map[string]http.Handler{"FiberApp": FiberApp(app), "FiberHandler": FiberHandler(h)} {
+		stripped := http.StripPrefix("/api/", handler)
+		for target, want := range map[string]string{
+			"/api/users":                 "/users|/users|example.com",
+			"/api/":                      "/|/|example.com",
+			"/api/users/%41?x=1":         "/users/A|/users/%41?x=1|example.com",
+			"/api/x//h/admin/users":      "/x//h/admin/users|/x//h/admin/users|example.com",
+			"/api/x://h/admin/users?x=1": "/x://h/admin/users|/x://h/admin/users?x=1|example.com",
+		} {
+			t.Run(name+" "+target, func(t *testing.T) {
+				t.Parallel()
+				rec := adaptorTestServe(stripped, apptest.Req(fiber.MethodGet, target))
+				require.Equal(t, http.StatusOK, rec.Code)
+				require.Equal(t, want, rec.Body.String())
+			})
+		}
+	}
 }
 
 // Test_HTTPMiddleware_RejectsAuthorityTarget pins that a routed target
@@ -565,6 +669,82 @@ func Test_FiberHandler_RoutesRawBytes(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code, target)
 		require.Equal(t, want, rec.Body.String(), target)
 	}
+}
+
+// Test_FiberHandler_RoutesAHashAsNetHTTPReadsIt pins that a "#" in the request line reaches Fiber as the byte of the
+// path or query net/http read it as, in either line the adapters route, where fasthttp would end the path there.
+func Test_FiberHandler_RoutesAHashAsNetHTTPReadsIt(t *testing.T) {
+	t.Parallel()
+	describe := func(c fiber.Ctx) error { return c.SendString(c.Path() + "|" + c.Query("q")) }
+	app := fiber.New()
+	app.Use(describe)
+	readBy := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Read", r.URL.EscapedPath()+"|"+r.URL.Query().Get("q"))
+			next.ServeHTTP(w, r)
+		})
+	}
+	served := []struct {
+		handler      http.Handler
+		name, before string
+	}{
+		{name: "FiberApp", handler: readBy(FiberApp(app))},
+		{name: "FiberHandler", handler: readBy(FiberHandler(describe))},
+		{name: "FiberHandlerFunc", handler: readBy(FiberHandlerFunc(describe))},
+		{name: "rewritten URL", before: "/api", handler: http.StripPrefix("/api", readBy(FiberApp(app)))},
+		{name: "absolute form", before: "http://example.com", handler: readBy(FiberApp(app))},
+	}
+
+	for target, want := range map[string]string{
+		"/admin#x":             "/admin%23x|",
+		"/admin#":              "/admin%23|",
+		"/admin#.css?q=1":      "/admin%23.css|1",
+		"/admin#?q=1":          "/admin%23|1",
+		"/admin?q=1#x":         "/admin|1#x",
+		"/admin?q=1#&q=2":      "/admin|1#",
+		"/admin?p=1#&q=2":      "/admin|2",
+		"/admin%23x?q=1%23x":   "/admin%23x|1#x",
+		"//x/admin/data#frag":  "//x/admin/data%23frag|",
+		"//x/admin/data#a://b": "//x/admin/data%23a://b|",
+	} {
+		t.Run(target, func(t *testing.T) {
+			t.Parallel()
+			for _, s := range served {
+				rec := adaptorTestServe(s.handler, apptest.Req(fiber.MethodGet, s.before+target))
+				require.Equal(t, http.StatusOK, rec.Code, s.name)
+				require.Equal(t, want, rec.Body.String(), s.name)
+				require.Equal(t, rec.Header().Get("X-Read"), rec.Body.String(), "%s: Fiber routed another request than net/http read", s.name)
+			}
+		})
+	}
+
+	t.Run("guard in front", func(t *testing.T) {
+		t.Parallel()
+		guarded := fiber.New()
+		guarded.Get("/public", func(c fiber.Ctx) error { return c.SendString("public") })
+		guarded.Get("/admin/users", func(c fiber.Ctx) error { return c.SendString("users") })
+		next := FiberApp(guarded)
+		guard := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if checked := strings.ToLower(path.Clean(r.URL.Path)); checked == "/admin" || strings.HasPrefix(checked, "/admin/") {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+
+		for target, want := range map[string]string{
+			"/public":                      "public",
+			"/admin/users":                 "",
+			"/public/%2e%2e/admin/users":   "",
+			"/admin/users%23/../../public": "public",
+			"/admin/users#/../../public":   "public",
+			"/admin/users#.css":            "",
+			"/admin/users?#/../../public":  "",
+		} {
+			rec := adaptorTestServe(guard, apptest.Req(fiber.MethodGet, target))
+			require.Equal(t, want, rec.Body.String(), target)
+		}
+	})
 }
 
 // Test_HTTPMiddleware_ServesEscapedSlash pins the documented way to serve a
@@ -819,6 +999,8 @@ func Test_HTTPHandler_ConnectAuthorityForm(t *testing.T) {
 		{"host and port", "example.com:443", "/example.com:443||/example.com:443", fiber.StatusOK},
 		{"IPv6 literal", "[::1]:443", "/[::1]:443||/%5B::1%5D:443", fiber.StatusOK},
 		{"with a path", "[::1]:443/x", "", fiber.StatusNotFound},
+		{"no authority, a byte of UTF-8", "\u00fcber", "", fiber.StatusNotFound},
+		{"no authority, brackets", "a[1]", "", fiber.StatusNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -826,6 +1008,61 @@ func Test_HTTPHandler_ConnectAuthorityForm(t *testing.T) {
 			require.Equal(t, tc.status, fctx.Response.StatusCode())
 			if tc.status == fiber.StatusOK {
 				require.Equal(t, tc.want, string(fctx.Response.Body()))
+			}
+		})
+	}
+}
+
+func Test_HTTPHandler_SeesOverriddenMethod(t *testing.T) {
+	t.Parallel()
+	method := func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte(r.Method))
+		assert.NoError(t, err)
+	}
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		if m := c.Get("X-HTTP-Method-Override"); m != "" {
+			c.Method(m)
+		}
+		return c.Next()
+	})
+	app.Get("/notes", HTTPHandlerFunc(method))
+	app.Post("/notes", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusUnauthorized) }, HTTPHandlerFunc(method))
+	app.Get("/direct", method)
+
+	for _, target := range []string{"/notes", "/direct"} {
+		fctx := rawLine(t, app, "POST "+target+" HTTP/1.1\r\nHost: x\r\nX-HTTP-Method-Override: GET\r\nContent-Length: 0\r\n\r\n")
+		require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode(), target)
+		require.Equal(t, fiber.MethodGet, string(fctx.Response.Body()), target)
+	}
+}
+
+// Test_HTTPHandler_ConnectNoAuthorityIsGuarded pins that a CONNECT target that is no host and port is not taken for the
+// authority form: "CONNECT über.txt" is routed as a raw "/über.txt", which a middleware mounted on "/%C3%BCber.txt" does not
+// run for, while a file server reads both as the one name that middleware guards.
+func Test_HTTPHandler_ConnectNoAuthorityIsGuarded(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "über.txt"), []byte("data"), 0o600))
+
+	for name, register := range map[string]func(*fiber.App){
+		"HTTPHandler":                  func(app *fiber.App) { app.Use(HTTPHandler(http.FileServer(http.Dir(root)))) },
+		"net/http registered directly": func(app *fiber.App) { app.Use(http.FileServer(http.Dir(root))) },
+		"fasthttp registered directly": func(app *fiber.App) { app.Use(fasthttp.FSHandler(root, 0)) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			served := fiber.New()
+			register(served)
+			adaptorTestRequireRawOK(t, served, "/%C3%BCber.txt", "data")
+
+			app := fiber.New()
+			app.Use("/%C3%BCber.txt", denyAll)
+			register(app)
+			adaptorTestRequireRawStatus(t, app, "/%C3%BCber.txt", fiber.StatusForbidden)
+			for _, target := range []string{"/über.txt", "über.txt"} {
+				fctx := rawLine(t, app, fiber.MethodConnect+" "+target+" HTTP/1.1\r\nHost: example.com\r\n\r\n")
+				require.Equal(t, fiber.StatusNotFound, fctx.Response.StatusCode(), target)
 			}
 		})
 	}

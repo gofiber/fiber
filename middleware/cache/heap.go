@@ -153,6 +153,8 @@ func (h *indexedHeap) popInternal() heapEntry {
 	}
 	h.expiryRemove(entry.idx)
 	h.unlink(entry.idx, entry.tag.slot)
+	// Keep only the index putWithGeneration reuses: the freed key and manifest are no longer counted.
+	h.entries[n-1] = heapEntry{idx: entry.idx}
 	h.entries = h.entries[0 : n-1]
 	return entry
 }
