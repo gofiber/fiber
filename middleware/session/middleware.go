@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/ctxlocal"
+	"github.com/gofiber/fiber/v3/internal/personalheader"
 	"github.com/gofiber/fiber/v3/internal/redact"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/valyala/fasthttp"
@@ -172,6 +173,12 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		if err := m.initialize(c, &cfg); err != nil {
 			releaseMiddleware(m)
 			handleSessionError(c, cfg.ErrorHandler, err)
+			// The session the request named could not be loaded, and the response, the
+			// ErrorHandler's, goes out without the cookie: one that leaves it a 200 must not
+			// have the cache registered before this middleware serve it to every client.
+			valuesMu.Lock()
+			personalheader.MarkResponse(c.RequestCtx())
+			valuesMu.Unlock()
 			return nil
 		}
 

@@ -1294,6 +1294,25 @@ func Test_Session_Middleware_UnsavedSessionIsNotCached(t *testing.T) {
 	require.Equal(t, "hello <nil>", apptest.Body(t, second))
 }
 
+// When the storage cannot load the session the request names, the response goes out without the cookie,
+// and an ErrorHandler that only logs leaves it an empty 200: the mark keeps it out of the cache, which
+// would otherwise serve it to every client in place of the page.
+func Test_Session_Middleware_FailedLoadIsNotCached(t *testing.T) {
+	t.Parallel()
+	mem := storagetest.New()
+	mem.SetErr(storagetest.OpGet, "*", errors.New("boom"))
+	app := fiber.New()
+	app.Use(cache.New())
+	app.Use(New(Config{Storage: mem, ErrorHandler: func(fiber.Ctx, error) {}}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("page") })
+
+	req := apptest.Req(fiber.MethodGet, "/", apptest.WithHeader(fiber.HeaderCookie, "session_id=abc"))
+	resp := apptest.Expect(t, app, req, fiber.StatusOK)
+	require.Empty(t, resp.Header.Get(fiber.HeaderSetCookie))
+	require.Equal(t, "unreachable", resp.Header.Get("X-Cache"), "the cache stored the page of a failed load")
+	require.Equal(t, "page", apptest.Body(t, apptest.Do(t, app, "/")), "a client without the cookie got the error page")
+}
+
 // A destroy that fails sends no cookie, and the middleware does not save a destroyed session: the
 // response is marked instead, so the cache in front does not hand the page to other clients.
 func Test_Session_Middleware_FailedDestroyIsNotCached(t *testing.T) {
